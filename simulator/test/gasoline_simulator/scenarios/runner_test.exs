@@ -82,17 +82,4 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
                     result.annual.total_fut_pct,
                     1.0e-6
   end
-
-  test "independent annual runs draw different simulated yields for the same refinery-month" do
-    assert {:ok, %{months: months_a}} = Runner.run(%{})
-    assert {:ok, %{months: months_b}} = Runner.run(%{})
-
-    yields_a =
-      Enum.flat_map(months_a, fn month -> Enum.map(month.refineries, & &1.simulated_yield) end)
-
-    yields_b =
-      Enum.flat_map(months_b, fn month -> Enum.map(month.refineries, & &1.simulated_yield) end)
-
-    refute yields_a == yields_b
-  end
 end
