@@ -3,10 +3,10 @@ use gasoline_solver::{solve, FacilityInput, SolverError, SolverInput};
 const LIMIT: f64 = 5.0;
 const EPS: f64 = 1e-6;
 
-fn facility(id: &str, reference_yield: f64, capacity: f64, floor: f64) -> FacilityInput {
+fn facility(id: &str, simulated_yield: f64, capacity: f64, floor: f64) -> FacilityInput {
     FacilityInput {
         id: id.into(),
-        reference_yield,
+        simulated_yield,
         capacity,
         floor,
     }

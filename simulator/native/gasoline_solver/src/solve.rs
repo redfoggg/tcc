@@ -39,7 +39,7 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
     let mut throughput_objective = Expression::with_capacity(facility_vars.len());
     let mut production_expr = Expression::with_capacity(facility_vars.len());
     for fv in &facility_vars {
-        throughput_objective.add_mul(1.0 / fv.facility.reference_yield, fv.allocation);
+        throughput_objective.add_mul(1.0 / fv.facility.simulated_yield, fv.allocation);
         production_expr.add_mul(1.0, fv.allocation);
     }
 
@@ -152,13 +152,13 @@ fn validate(input: &SolverInput) -> Result<(), SolverError> {
     let valid = input
         .facilities
         .iter()
-        .all(|facility| facility.reference_yield.is_finite() && facility.reference_yield > 0.0);
+        .all(|facility| facility.simulated_yield.is_finite() && facility.simulated_yield > 0.0);
 
     if valid {
         Ok(())
     } else {
         Err(SolverError::InvalidInput {
-            reason: "reference yield must be finite and positive".to_string(),
+            reason: "simulated yield must be finite and positive".to_string(),
         })
     }
 }

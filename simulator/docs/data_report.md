@@ -40,12 +40,16 @@ coluna) que declara exatamente como foi obtido. Três categorias amplas:
   a produção de gasolina A por refinaria e as vendas de gasolina C.
 - **Derivado**: calculado a partir de dados observados usando uma conversão
   ou uma premissa externa, portanto nunca é, ele mesmo, um valor reportado
-  pela ANP. Cobre o proxy de demanda, a capacidade de refino em metros
-  cúbicos, a capacidade teórica de gasolina A e o rendimento de referência
-  anual por refinaria (veja as transformações abaixo). O piso operacional é
-  um caso especial: é derivado como o mínimo entre vários valores de produção
-  mensal diretamente observados de uma refinaria, portanto é uma estatística
-  calculada, não um valor publicado diretamente pela ANP.
+  pela ANP. Cobre o proxy de demanda e a capacidade de refino em metros
+  cúbicos e a capacidade teórica de gasolina A (veja as transformações
+  abaixo). O piso operacional é um caso especial: é derivado como o mínimo
+  entre vários valores de produção mensal diretamente observados de uma
+  refinaria, portanto é uma estatística calculada, não um valor publicado
+  diretamente pela ANP.
+- **Simulado**: o rendimento de gasolina A por refinaria-mês (`R_{i,t}`) não
+  é observado nem derivado de nenhum CSV curado. É sorteado em tempo de
+  execução, uma vez por execução anual do Planejado 2025, de uma distribuição
+  uniforme calibrada a partir dos dados observados (veja a seção abaixo).
 - **Hipotético**: valores que existem apenas dentro de uma execução anual
   planejada disparada pelo painel (estoque inicial customizado, ajuste de
   demanda ou substituição do piso operacional, aplicados a toda a execução de
@@ -54,47 +58,53 @@ coluna) que declara exatamente como foi obtido. Três categorias amplas:
 
 ## Transformações de dados
 
-### Rendimento de referência fixo por refinaria
+### Rendimento simulado `R_{i,t}`
 
-O modelo planejado usa um único rendimento de referência anual por
-refinaria, fixo para os doze meses de 2025, em vez de uma previsão móvel
-mensal. Ele é calculado como a razão ponderada entre a soma anual observada
-de produção de gasolina A e a soma anual observada de processamento de
-petróleo daquela refinaria:
-
-```
-raw_ratio_i = sum_t gasolina_a_m3_{i,t} / sum_t petroleo_processado_m3_{i,t}
-```
-
-Essa razão local só é aceita como rendimento de referência (`valid_local_ratio
-= true`) quando é finita, o denominador é positivo e `0 < raw_ratio_i <= 1`.
-Quando a razão local não é válida, a refinaria recebe o fallback nacional
-ponderado, calculado apenas a partir das refinarias cuja razão local é
-válida:
+O modelo planejado não usa mais um rendimento de referência fixo derivado da
+razão anual observada de cada refinaria. Em vez disso, para cada execução do
+Planejado 2025, o painel sorteia um rendimento simulado de gasolina A
+independente para cada refinaria e cada mês:
 
 ```
-fallback_nacional = sum_i (sum_t gasolina_a_m3_{i,t}) / sum_i (sum_t petroleo_processado_m3_{i,t})
+R_{i,t} ~ Uniforme(0.20, 0.25)
 ```
 
-somando apenas sobre as refinarias `i` com razão local válida. Duas
-refinarias do escopo fixo usam o fallback nacional em 2025: LUBNOR, que não
-teve produção de gasolina A observada em nenhum mês do ano
-(`national_weighted_fallback_zero_local_ratio`), e REAM, cuja razão local
-observada excede 1
-(`national_weighted_fallback_local_ratio_exceeds_unit_interval`). O resultado
-completo, incluindo os totais observados, a razão bruta, a validade da razão
-local, o rendimento de referência selecionado e a proveniência de cada
-refinaria, está em
-`data/curated/anp_2025_reference_yields_by_refinery.csv`. A linha
-`NATIONAL_FALLBACK` nesse arquivo documenta os totais agregados usados para
-calcular o fallback.
+O intervalo `[0.20, 0.25]` é calibrado a partir dos dados agregados
+observados no Brasil, hoje diretamente sustentado pelos dados de 2025 deste
+repositório. A razão nacional ponderada de gasolina A por petróleo
+processado em 2025, somando as 13 refinarias do escopo fixo
+(`sum_i sum_t gasolina_a_m3_{i,t} / sum_i sum_t petroleo_processado_m3_{i,t}`,
+com base nos meses observados sem falha de processamento), fica em torno de
+`0,26`, próxima do topo do intervalo escolhido. As razões mensais observadas
+por refinaria individual (antes descritas em
+`data/curated/anp_2025_derivative_yields_by_refinery_monthly.csv`) variam
+muito mais entre refinarias, algumas bem abaixo e algumas acima de
+`[0.20, 0.25]`, refletindo diferenças de escopo, mix de produto e qualidade
+do dado mensal por refinaria. `[0.20, 0.25]` foi escolhido como uma faixa
+plausível em torno do patamar agregado nacional, não como o intervalo exato
+de mínimo e máximo observado por refinaria em cada mês.
 
-Diferente do modelo anterior, o rendimento de referência não varia mês a mês
-e não depende de nenhum histórico observado de meses anteriores dentro do
-ano corrente: é um único valor fixo por refinaria, usado apenas para converter
-a alocação planejada de gasolina A em processamento de petróleo implícito.
+A distribuição uniforme dentro desse intervalo é uma premissa de modelagem,
+não uma distribuição de probabilidade oficial por refinaria: nenhuma
+distribuição de probabilidade do rendimento de gasolina A por refinaria é
+publicada pela ANP ou por qualquer fonte oficial consultada. `R_{i,t}` é,
+portanto, um rendimento simulado de gasolina A para fins de simulação,
+sorteado independentemente para cada par refinaria-mês, não um máximo de
+engenharia comprovado observado daquela refinaria.
+
+O sorteio acontece uma única vez por execução anual, ao construir a
+execução (`GasolineSimulator.Scenarios.YieldSampling.draw/1`), e o mesmo
+valor sorteado é reutilizado em ambas as etapas do solver e em toda a
+renderização de resultado e exportação daquela execução. Uma nova execução
+sorteia novos valores de forma independente, portanto tende a produzir
+alocações e FUT diferentes da execução anterior. Não há controle de semente,
+reprodutibilidade nem gerenciamento determinístico de cenário.
+
 `data/curated/anp_2025_derivative_yields_by_refinery_monthly.csv` permanece
-como evidência de origem mensal, mas não alimenta mais o planejamento.
+como evidência histórica do rendimento observado de gasolina A por
+refinaria-mês em 2025, usada apenas para calibrar o intervalo acima. Ela não
+alimenta o planejamento e nenhum valor dela é lido em tempo de execução pelo
+código deste repositório.
 
 ### Proxy de demanda de gasolina C para gasolina A
 
@@ -135,11 +145,13 @@ próprio observado daquela refinaria, portanto `capacity_gasoline_a_m3_month`
 é uma estimativa teórica (`derived_theoretical_not_observed`) que pode
 super ou subestimar a capacidade real de gasolina A de uma refinaria
 específica. Essa é uma limitação conhecida e documentada dos dados curados,
-não corrigida por este modelo: refinarias cujo rendimento de referência
-próprio é bem maior que a média nacional (por exemplo RECAP e REPAR) têm sua
-capacidade teórica de gasolina A subestimada por essa fórmula, o que pode
-produzir um FUT Total agregado acima de 100% no modelo planejado. Veja
-`docs/model_specification.md` para a discussão desse efeito sobre o FUT.
+não corrigida por este modelo: quando o rendimento simulado `R_{i,t}`
+sorteado para uma refinaria em um mês fica abaixo da média nacional fixada
+nessa fórmula, a capacidade teórica de gasolina A daquela refinaria naquele
+mês tende a ficar subestimada em relação ao processamento de petróleo
+implícito pela alocação planejada, o que pode produzir um FUT Total
+agregado acima de 100% no modelo planejado. Veja `docs/model_specification.md`
+para a discussão desse efeito sobre o FUT.
 
 ## Campos de proveniência
 
@@ -221,8 +233,9 @@ mantidos em `data/curated/`.
 - A capacidade de refino é um único instantâneo nominal (2025-12-31) aplicado
   a todos os meses de 2025, portanto mudanças de capacidade dentro do ano não
   são capturadas, e `capacity_gasoline_a_m3_month` usa um rendimento médio
-  nacional em vez do rendimento próprio de cada refinaria. Essa limitação
-  pode fazer o FUT Total planejado ultrapassar 100%, como descrito acima.
+  nacional em vez do rendimento simulado sorteado para aquele mês. Essa
+  limitação pode fazer o FUT Total planejado ultrapassar 100%, como descrito
+  acima.
 - O piso operacional é a menor produção mensal observada de gasolina A de uma
   refinaria ao longo de 2025. Ele não distingue uma taxa mínima de operação
   genuína de um mês afetado por uma parada ou evento de manutenção não
@@ -230,8 +243,9 @@ mantidos em `data/curated/`.
 - O escopo de refinarias é fixo à lista do `estudo_tcc.typ`. Refinarias
   independentes fora dessa lista são excluídas do modelo mesmo que apareçam
   na série bruta da ANP.
-- O rendimento de referência de LUBNOR e REAM vem do fallback nacional
-  ponderado, não de uma razão local própria válida, pelas razões descritas
-  acima.
+- O rendimento simulado `R_{i,t}` é sorteado de uma distribuição uniforme
+  em `[0.20, 0.25]`, calibrada a partir do agregado nacional, e não reflete a
+  razão local individual observada de cada refinaria, que varia bem mais
+  entre refinarias como LUBNOR e REAM.
 - `data/curated/anp_2025_*` é entrada acadêmica estática para 2025. Não há
   automação de download ou regeneração neste repositório.

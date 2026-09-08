@@ -24,11 +24,13 @@ carrega imediatamente a partir de `data/curated/historical_2025_summary.json`.
 
 - `GasolineSimulator.Data.Repository` lê os CSVs curados uma única vez para o
   ano inteiro (`load_year/1`) e retorna dois mapas simples: a demanda nacional
-  por mês e os atributos de cada refinaria por mês (capacidade, capacidade de
-  processamento bruto, piso operacional e o rendimento de referência com sua
-  proveniência). Todas as 13 refinarias do escopo fixo aparecem em todos os
-  12 meses. Não existe mais nenhum conceito de refinaria excluída ou não
-  modelável.
+  por mês e os atributos de cada refinaria por mês (capacidade e capacidade de
+  processamento bruto, e piso operacional). Todas as 13 refinarias do escopo
+  fixo aparecem em todos os 12 meses. Não existe mais nenhum conceito de
+  refinaria excluída ou não modelável.
+- `GasolineSimulator.Scenarios.YieldSampling` sorteia o rendimento simulado de
+  gasolina A `R_{i,t}` de cada refinaria-mês, uma única vez por execução
+  anual, de uma distribuição uniforme em `[0.20, 0.25]`.
 - `GasolineSimulator.Problem` constrói a estrutura de domínio de um mês a
   partir dos controles do painel e dos dados curados carregados. Nenhuma
   refinaria é filtrada aqui.
@@ -96,11 +98,12 @@ em `docs/model_specification.md`.
 
 `data/curated/` contém dados estáticos e versionados de 2025 derivados da
 ANP: produção de gasolina A por refinaria, rendimentos de derivados por
-refinaria (evidência de origem, não usada diretamente pelo planejamento),
-capacidade de refino, demanda nacional e os rendimentos de referência anuais
-por refinaria com o fallback nacional. O catálogo de refinarias é restrito às
-refinarias listadas no `estudo_tcc.typ` da raiz do repositório. Veja
-`docs/data_report.md` para fontes, transformações e escopo.
+refinaria (evidência histórica usada apenas para calibrar o intervalo de
+sorteio do rendimento simulado, não lida em tempo de execução pelo
+planejamento), capacidade de refino e demanda nacional. O catálogo de
+refinarias é restrito às refinarias listadas no `estudo_tcc.typ` da raiz do
+repositório. Veja `docs/data_report.md` para fontes, transformações e
+escopo.
 
 ### Controles do painel
 
@@ -115,13 +118,17 @@ como média aritmética das razões individuais.
 Para o Planejado 2025 você define um estoque inicial para 2025-01-01, um
 percentual opcional de ajuste de demanda aplicado a todos os meses e, por
 refinaria, uma substituição opcional do piso operacional. Um único clique
+sorteia um novo rendimento simulado `R_{i,t}` para cada refinaria-mês e
 executa um plano anual completo. O FUT planejado é calculado por refinaria a
-partir do processamento de petróleo implícito `x / R_i` (alocação dividida
-pelo rendimento de referência fixo daquela refinaria), sobre a mesma
-capacidade bruta de processamento como denominador. A agregação mensal e
-anual usa a mesma razão de somas do Histórico 2025. O modelo limita a
-produção de gasolina A apenas à capacidade máxima curada de gasolina A da
-refinaria naquele mês, sem nenhum limite derivado do processamento.
+partir do processamento de petróleo implícito `x / R_{i,t}` (alocação
+dividida pelo rendimento simulado sorteado para aquela refinaria naquele
+mês), sobre a mesma capacidade bruta de processamento como denominador. A
+agregação mensal e anual usa a mesma razão de somas do Histórico 2025. O
+modelo limita a produção de gasolina A apenas à capacidade máxima curada de
+gasolina A da refinaria naquele mês, sem nenhum limite derivado do
+processamento. Como o rendimento é sorteado novamente a cada execução,
+execuções sucessivas do Planejado 2025 tendem a produzir alocações e FUT
+diferentes entre si.
 
 ### Exportação JSON
 

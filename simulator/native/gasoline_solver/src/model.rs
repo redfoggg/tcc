@@ -3,7 +3,7 @@ use rustler::NifMap;
 #[derive(Debug, Clone, PartialEq, NifMap)]
 pub struct FacilityInput {
     pub id: String,
-    pub reference_yield: f64,
+    pub simulated_yield: f64,
     pub capacity: f64,
     pub floor: f64,
 }

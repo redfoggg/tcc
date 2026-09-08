@@ -3,6 +3,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
   alias GasolineSimulator.Problem
   alias GasolineSimulator.Result
   alias GasolineSimulator.Scenarios.Overrides
+  alias GasolineSimulator.Scenarios.YieldSampling
   alias GasolineSimulator.Solver
 
   @annual_fields [
@@ -21,17 +22,19 @@ defmodule GasolineSimulator.Scenarios.Runner do
       solver_opts = Keyword.take(opts, [:timeout, :task_supervisor])
 
       year_data = Repository.load_year(repository_opts)
+      simulated_yields = YieldSampling.draw(year_data.refineries_by_month)
 
-      with {:ok, months} <- run_months(Repository.months(), overrides, year_data, solver_opts) do
+      with {:ok, months} <-
+             run_months(Repository.months(), overrides, year_data, simulated_yields, solver_opts) do
         {:ok, %{months: months, annual: summarize(months)}}
       end
     end
   end
 
-  defp run_months(months, overrides, year_data, solver_opts) do
+  defp run_months(months, overrides, year_data, simulated_yields, solver_opts) do
     months
     |> Enum.reduce_while({[], overrides.initial_inventory_m3}, fn month, {acc, opening} ->
-      result = solve_month(month, opening, overrides, year_data, solver_opts)
+      result = solve_month(month, opening, overrides, year_data, simulated_yields, solver_opts)
 
       case result.status do
         :ok -> {:cont, {[result | acc], result.ending_inventory_m3}}
@@ -44,16 +47,17 @@ defmodule GasolineSimulator.Scenarios.Runner do
   defp finish({:error, failed_result}), do: {:error, failed_result}
   defp finish({acc, _final_inventory}), do: {:ok, Enum.reverse(acc)}
 
-  defp solve_month(month, opening_inventory, overrides, year_data, solver_opts) do
-    {:ok, problem} =
-      Problem.build(build_month_attrs(month, opening_inventory, overrides, year_data))
+  defp solve_month(month, opening_inventory, overrides, year_data, simulated_yields, solver_opts) do
+    attrs = build_month_attrs(month, opening_inventory, overrides, year_data, simulated_yields)
+    {:ok, problem} = Problem.build(attrs)
 
     Result.from_solver(problem, Solver.solve(Problem.to_solver_input(problem), solver_opts))
   end
 
-  defp build_month_attrs(month, opening_inventory, overrides, year_data) do
+  defp build_month_attrs(month, opening_inventory, overrides, year_data, simulated_yields) do
     demand_entry = Map.fetch!(year_data.demand_by_month, month)
     adjusted_demand = Overrides.apply_demand(overrides, demand_entry.demand_m3)
+    month_yields = Map.fetch!(simulated_yields, month)
 
     %{
       month: Repository.month_key(month),
@@ -63,7 +67,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
       refineries:
         year_data.refineries_by_month
         |> Map.fetch!(month)
-        |> Enum.map(&build_refinery_attrs(&1, overrides))
+        |> Enum.map(&build_refinery_attrs(&1, overrides, month_yields))
     }
   end
 
@@ -74,8 +78,12 @@ defmodule GasolineSimulator.Scenarios.Runner do
   defp demand_provenance(%Overrides{demand_adjustment_pct: pct}, base_provenance),
     do: "#{base_provenance}, planned demand adjustment #{pct}%"
 
-  defp build_refinery_attrs(refinery, overrides) do
+  defp build_refinery_attrs(refinery, overrides, month_yields) do
     refinery
+    |> Map.merge(%{
+      simulated_yield: Map.fetch!(month_yields, refinery.id),
+      simulated_yield_provenance: YieldSampling.provenance()
+    })
     |> apply_floor_override(overrides)
     |> clamp_floor()
   end

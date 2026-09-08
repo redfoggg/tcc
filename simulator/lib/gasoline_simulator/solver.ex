@@ -6,7 +6,7 @@ defmodule GasolineSimulator.Solver do
 
   @type facility_input :: %{
           id: String.t(),
-          reference_yield: number(),
+          simulated_yield: number(),
           capacity: number(),
           floor: number()
         }

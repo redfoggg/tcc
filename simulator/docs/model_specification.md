@@ -19,8 +19,8 @@ modelo especificado abaixo uma vez, de janeiro a dezembro.
 - `M`: meses do ano de referência (`2025-01` .. `2025-12`).
 - `F`: o escopo fixo de 13 refinarias listadas no `estudo_tcc.typ`. Todas as
   refinarias de `F` participam de todo mês `t`, com capacidade máxima curada
-  e um rendimento de referência válido, incluindo o fallback nacional quando
-  aplicável. Não existe mais nenhum conceito de exclusão de refinaria por mês.
+  e um rendimento simulado sorteado para aquela refinaria naquele mês. Não
+  existe mais nenhum conceito de exclusão de refinaria por mês.
 - Um MILP é resolvido por mês (`GasolineSimulator.Solver.solve/2`, uma
   chamada nativa por mês). `GasolineSimulator.Scenarios.Runner.run/2` conduz
   a sequência: resolve o mês 1, usa seu estoque final como estoque inicial do
@@ -35,7 +35,7 @@ modelo especificado abaixo uma vez, de janeiro a dezembro.
 |---|---|---|---|
 | `demand_t` | `demand_m3` | Proxy de demanda nacional de gasolina A para o mês `t` (após qualquer ajuste de demanda planejado) | m³ |
 | `S_{t-1}` | `initial_inventory_m3` | Estoque nacional inicial do mês `t`, igual ao estoque final do mês `t-1` (ou o estoque inicial editável pelo usuário para o mês 1) | m³ |
-| `R_i` | `reference_yield` | Rendimento de referência fixo de gasolina A da refinaria `i`, constante para os doze meses de 2025 (veja a seção 3) | adimensional, `> 0` |
+| `R_{i,t}` | `simulated_yield` | Rendimento simulado de gasolina A da refinaria `i` no mês `t`, sorteado independentemente para essa execução (veja a seção 3) | adimensional, em `[0.20, 0.25]` |
 | `capacity_{i,t}` | `capacity_m3` | Capacidade máxima mensal curada de gasolina A, `K^G_{i,t}` | m³ |
 | `processing_capacity_{i,t}` | `processing_capacity_m3` | Capacidade bruta mensal de processamento de petróleo, `K^P_{i,t}` | m³ |
 | `floor_i` | `floor_m3` | Produção mínima mensal de gasolina A da refinaria `i` quando ativa | m³ |
@@ -44,25 +44,41 @@ modelo especificado abaixo uma vez, de janeiro a dezembro.
 `anp_2025_refinery_capacity_monthly.csv` (`capacity_gasoline_a_m3_month` e
 `capacity_m3_month`). `floor_m3` vem de `operating_floor_m3_2025` no mesmo
 arquivo, e é sempre limitado (clampado) para nunca exceder `capacity_m3`.
-`reference_yield` vem de `anp_2025_reference_yields_by_refinery.csv`.
+`simulated_yield` não vem de nenhum CSV curado, é sorteado em tempo de
+execução ao construir a execução anual, veja a seção 3.
 `demand_m3` vem de `anp_2025_demand_proxy_national_monthly.csv`
 (`gasolina_a_equivalent_m3`). Todos os volumes são em metros cúbicos (m³).
 
-## 3. Rendimento de referência `R_i` (`anp_2025_reference_yields_by_refinery.csv`)
+## 3. Rendimento simulado `R_{i,t}`
 
-Diferente de uma previsão móvel mensal, o modelo usa um único rendimento de
-referência anual fixo por refinaria, o mesmo nos doze meses de 2025:
+O modelo não usa mais um rendimento de referência fixo por refinaria
+derivado de dados observados. Em vez disso, para cada execução anual do
+Planejado 2025, o painel sorteia, de forma independente para cada refinaria
+`i` e cada mês `t`, um rendimento simulado de gasolina A:
 
 ```
-R_i = sum_t producao_gasolina_a_{i,t} / sum_t petroleo_processado_{i,t}
+R_{i,t} ~ Uniforme(0.20, 0.25)
 ```
 
-Essa razão local só é aceita quando é finita, o denominador é positivo e
-`0 < R_i <= 1`. Caso contrário, `R_i` é o fallback nacional ponderado,
-calculado apenas a partir das refinarias com razão local válida. Duas
-refinarias do escopo fixo usam o fallback nacional em 2025 (LUBNOR e REAM).
-Veja `docs/data_report.md#rendimento-de-referência-fixo-por-refinaria` para a
-fórmula completa do fallback e a proveniência de cada refinaria.
+Esse sorteio acontece uma única vez, ao construir a execução anual
+(`GasolineSimulator.Scenarios.YieldSampling.draw/1`, chamado por
+`GasolineSimulator.Scenarios.Runner.run/2`), e o mesmo valor sorteado é usado
+em ambas as etapas do solver daquele mês e em toda a renderização de
+resultado e exportação daquela execução. Uma nova execução do painel sorteia
+novos valores de forma independente e, portanto, tende a produzir alocações
+e FUT diferentes da execução anterior. Não há controle de semente (seed),
+reprodutibilidade ou gerenciamento determinístico de cenário: cada clique em
+"Run Planned 2025" é uma nova amostragem estocástica.
+
+O intervalo `[0.20, 0.25]` é calibrado a partir dos dados agregados
+observados no Brasil, hoje sustentado diretamente pelos dados de 2025 deste
+repositório: veja `docs/data_report.md#rendimento-simulado-r_it` para a
+faixa observada por trás dessa calibração. A distribuição uniforme dentro do
+intervalo é uma premissa de modelagem, não uma distribuição de probabilidade
+oficial por refinaria, porque nenhuma distribuição desse tipo está disponível
+publicamente. `R_{i,t}` é, portanto, um rendimento simulado de gasolina A
+para fins de simulação, não um máximo de engenharia comprovado por
+refinaria.
 
 ## 4. Variáveis de decisão (por mês, por refinaria `i in F`)
 
@@ -92,7 +108,7 @@ tolerância numérica de `1e-6` m³) e então minimiza o processamento total de
 petróleo implícito nas alocações:
 
 ```
-minimizar  sum_{i in F} allocation_i / R_i
+minimizar  sum_{i in F} allocation_i / R_{i,t}
 sujeito a  todas as restrições da seção 6
            deficit_etapa1 - tolerância <= deficit <= deficit_etapa1 + tolerância
 ```
@@ -145,9 +161,9 @@ falha numérica, e é reportada como `SolverError::SolverFailure`.
 
 O painel controlado e os CSVs curados estáticos são confiáveis. A única
 verificação matemática mínima aplicada na fronteira do solver em Rust é que
-o rendimento de referência de cada refinaria seja finito e positivo, exigido
-pela própria divisão `allocation_i / R_i` no objetivo da etapa 2. Um valor
-inválido retorna `SolverError::InvalidInput`.
+o rendimento simulado de cada refinaria-mês seja finito e positivo, exigido
+pela própria divisão `allocation_i / R_{i,t}` no objetivo da etapa 2. Um
+valor inválido retorna `SolverError::InvalidInput`.
 
 Os CSVs curados em `data/curated/` são tratados como um conjunto de dados
 fixo e já validado: `GasolineSimulator.Data.Repository` os interpreta
@@ -180,13 +196,13 @@ por mês:
 `month`, saldo, FUT Total, processamento de petróleo total e capacidade de
 processamento total do mês, demanda, estoques, produção, demanda atendida,
 déficit, cobertura, motivo de falha, e `refineries` (todas as 13 refinarias
-do escopo fixo, mescladas com seu resultado do solver, rendimento de
-referência e proveniência).
+do escopo fixo, mescladas com seu resultado do solver, o rendimento simulado
+sorteado para aquele mês e sua proveniência).
 
-Cada refinaria em `refineries` inclui identidade, rendimento de referência e
-proveniência, capacidades, piso, alocação, processamento implícito de
-petróleo, FUT individual (diagnóstico), ativação, utilização e a sinalização
-de capacidade binding.
+Cada refinaria em `refineries` inclui identidade, o rendimento simulado
+efetivamente usado naquele mês e sua proveniência, capacidades, piso,
+alocação, processamento implícito de petróleo, FUT individual (diagnóstico),
+ativação, utilização e a sinalização de capacidade binding.
 
 `GasolineSimulator.Scenarios.Runner.run/2` retorna
 `{:ok, %{months: [%Result{}, ...], annual: annual_summary}}`, onde
@@ -256,10 +272,16 @@ mês, mesmo que o NIF dirty CPU subjacente continue em execução até o fim.
   `2025-12-31`, aplicado uniformemente a todos os meses de 2025, portanto
   mudanças de capacidade dentro do ano não são capturadas, e
   `capacity_gasoline_a_m3_month` usa um rendimento médio nacional em vez do
-  rendimento próprio de cada refinaria. Isso pode fazer o FUT Total planejado
-  ultrapassar 100%, já que uma refinaria com rendimento de referência próprio
-  bem acima da média nacional pode ter sua capacidade teórica de gasolina A
-  subestimada por essa fórmula, veja `docs/data_report.md`.
+  rendimento simulado sorteado para aquele mês. Isso pode fazer o FUT Total
+  planejado ultrapassar 100%, já que um sorteio de `R_{i,t}` abaixo do
+  rendimento médio nacional usado naquela fórmula pode subestimar o
+  processamento de petróleo implícito na capacidade teórica de gasolina A,
+  veja `docs/data_report.md`.
+- O rendimento simulado `R_{i,t}` é sorteado de uma distribuição uniforme em
+  `[0.20, 0.25]`, uma premissa de modelagem, não uma distribuição de
+  probabilidade oficial por refinaria. Ele representa um rendimento simulado
+  de gasolina A para fins de simulação, não um máximo de engenharia
+  comprovado por refinaria.
 - O piso operacional é derivado uma única vez a partir da menor produção
   mensal observada de gasolina A de uma refinaria ao longo de 2025 e mantido
   constante durante o ano. Ele não distingue uma taxa mínima de operação

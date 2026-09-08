@@ -1,12 +1,12 @@
 defmodule GasolineSimulator.Problem do
   defmodule Refinery do
-    @enforce_keys [:id, :name, :uf, :capacity_m3, :floor_m3, :reference_yield]
+    @enforce_keys [:id, :name, :uf, :capacity_m3, :floor_m3, :simulated_yield]
     defstruct [
       :id,
       :name,
       :uf,
-      :reference_yield,
-      :reference_yield_provenance,
+      :simulated_yield,
+      :simulated_yield_provenance,
       :capacity_m3,
       :processing_capacity_m3,
       :floor_m3,
@@ -45,7 +45,7 @@ defmodule GasolineSimulator.Problem do
   defp to_facility(%Refinery{} = refinery) do
     %{
       id: refinery.id,
-      reference_yield: refinery.reference_yield,
+      simulated_yield: refinery.simulated_yield,
       capacity: refinery.capacity_m3,
       floor: refinery.floor_m3
     }

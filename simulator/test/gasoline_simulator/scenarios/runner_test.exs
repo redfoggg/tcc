@@ -1,6 +1,9 @@
 defmodule GasolineSimulator.Scenarios.RunnerTest do
   use ExUnit.Case, async: true
 
+  alias GasolineSimulator.Historical
+  alias GasolineSimulator.Scenarios.Plan
+  alias GasolineSimulator.Scenarios.PlanningExport
   alias GasolineSimulator.Scenarios.Runner
 
   @moduletag :annual_smoke
@@ -40,5 +43,56 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
                     annual.total_petroleum_processed_m3 / annual.total_processing_capacity_m3 *
                       100.0,
                     1.0e-6
+  end
+
+  test "every refinery-month simulated yield falls in the calibrated 0.20-0.25 range" do
+    assert {:ok, %{months: months}} = Runner.run(%{})
+
+    for month <- months, refinery <- month.refineries do
+      assert refinery.simulated_yield >= 0.20
+      assert refinery.simulated_yield <= 0.25
+    end
+  end
+
+  test "the sampled simulated yield is the same value used throughout the result for that run" do
+    assert {:ok, %{months: months} = result} = Runner.run(%{})
+
+    for month <- months, refinery <- month.refineries do
+      assert_in_delta refinery.petroleum_processed_m3,
+                      refinery.allocated_m3 / refinery.simulated_yield,
+                      1.0e-6
+    end
+
+    historical = Historical.load()
+
+    plan = %Plan{
+      id: "runner-test-plan",
+      params: %{},
+      status: :completed,
+      result: result,
+      started_at: DateTime.utc_now(),
+      completed_at: DateTime.utc_now()
+    }
+
+    export = PlanningExport.build(historical, plan)
+
+    assert export.planned.status == :completed
+
+    assert_in_delta export.planned.annual.total_fut_pct,
+                    result.annual.total_fut_pct,
+                    1.0e-6
+  end
+
+  test "independent annual runs draw different simulated yields for the same refinery-month" do
+    assert {:ok, %{months: months_a}} = Runner.run(%{})
+    assert {:ok, %{months: months_b}} = Runner.run(%{})
+
+    yields_a =
+      Enum.flat_map(months_a, fn month -> Enum.map(month.refineries, & &1.simulated_yield) end)
+
+    yields_b =
+      Enum.flat_map(months_b, fn month -> Enum.map(month.refineries, & &1.simulated_yield) end)
+
+    refute yields_a == yields_b
   end
 end

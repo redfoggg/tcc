@@ -3,33 +3,18 @@ defmodule GasolineSimulator.Data.RepositoryTest do
 
   alias GasolineSimulator.Data.Repository
 
-  test "loads a curated local reference yield with provenance" do
+  test "loads curated capacity and floor attributes with provenance" do
     year_data = Repository.load_year()
     refineries = Map.fetch!(year_data.refineries_by_month, 1)
 
     replan = Enum.find(refineries, &(&1.id == "REPLAN"))
 
-    assert_in_delta replan.reference_yield, 0.266129, 1.0e-5
-    assert replan.reference_yield_provenance == "observed_annual_weighted_ratio"
+    assert_in_delta replan.capacity_m3, 578_026.059, 1.0e-3
+    assert_in_delta replan.processing_capacity_m3, 2_138_991.384, 1.0e-3
+    assert replan.floor_provenance == "observed_minimum_2025"
   end
 
-  test "loads the national fallback reference yield for refineries with an invalid local ratio" do
-    year_data = Repository.load_year()
-    refineries = Map.fetch!(year_data.refineries_by_month, 1)
-
-    lubnor = Enum.find(refineries, &(&1.id == "LUBNOR"))
-    ream = Enum.find(refineries, &(&1.id == "REAM"))
-
-    assert_in_delta lubnor.reference_yield, 0.248352, 1.0e-5
-    assert lubnor.reference_yield_provenance == "national_weighted_fallback_zero_local_ratio"
-
-    assert_in_delta ream.reference_yield, 0.248352, 1.0e-5
-
-    assert ream.reference_yield_provenance ==
-             "national_weighted_fallback_local_ratio_exceeds_unit_interval"
-  end
-
-  test "every fixed-scope refinery is present every month with a positive reference yield" do
+  test "every fixed-scope refinery is present every month with positive capacity fields" do
     year_data = Repository.load_year()
 
     Enum.each(Repository.months(), fn month ->
@@ -38,9 +23,9 @@ defmodule GasolineSimulator.Data.RepositoryTest do
       assert length(refineries) == 13
 
       Enum.each(refineries, fn refinery ->
-        assert refinery.reference_yield > 0.0
         assert refinery.capacity_m3 >= 0.0
         assert refinery.processing_capacity_m3 >= 0.0
+        refute Map.has_key?(refinery, :simulated_yield)
       end)
     end)
   end

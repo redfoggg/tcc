@@ -1,11 +1,8 @@
 defmodule GasolineSimulator.Data.Repository do
   alias GasolineSimulator.Catalog
 
-  @reference_yields_file "anp_2025_reference_yields_by_refinery.csv"
   @refinery_capacity_file "anp_2025_refinery_capacity_monthly.csv"
   @demand_proxy_file "anp_2025_demand_proxy_national_monthly.csv"
-
-  @national_fallback_row_id "NATIONAL_FALLBACK"
 
   @spec months() :: [1..12]
   def months, do: Enum.to_list(1..12)
@@ -17,11 +14,10 @@ defmodule GasolineSimulator.Data.Repository do
   @spec load_year(keyword()) :: map()
   def load_year(opts \\ []) do
     curated_dir = curated_dir(opts)
-    reference_yields_by_refinery = read_reference_yields(curated_dir)
 
     %{
       demand_by_month: demand_by_month(curated_dir),
-      refineries_by_month: refineries_by_month(curated_dir, reference_yields_by_refinery)
+      refineries_by_month: refineries_by_month(curated_dir)
     }
   end
 
@@ -50,34 +46,17 @@ defmodule GasolineSimulator.Data.Repository do
     end)
   end
 
-  defp refineries_by_month(curated_dir, reference_yields_by_refinery) do
+  defp refineries_by_month(curated_dir) do
     curated_dir
     |> Path.join(@refinery_capacity_file)
     |> read_csv_rows()
     |> Enum.group_by(&month_index(&1["month"]))
     |> Map.new(fn {month, rows} ->
-      {month, Enum.map(rows, &to_refinery_attrs(&1, reference_yields_by_refinery))}
+      {month, Enum.map(rows, &to_refinery_attrs/1)}
     end)
   end
 
-  defp read_reference_yields(curated_dir) do
-    curated_dir
-    |> Path.join(@reference_yields_file)
-    |> read_csv_rows()
-    |> Enum.reject(&(&1["refinery_code"] == @national_fallback_row_id))
-    |> Map.new(fn row ->
-      {row["refinery_code"],
-       %{
-         reference_yield: parse_float(row["reference_yield"]),
-         reference_yield_provenance: row["provenance"]
-       }}
-    end)
-  end
-
-  defp to_refinery_attrs(capacity_row, reference_yields_by_refinery) do
-    reference_yield_entry =
-      Map.fetch!(reference_yields_by_refinery, capacity_row["refinery_code"])
-
+  defp to_refinery_attrs(capacity_row) do
     catalog_entry = Catalog.find(capacity_row["refinery_code"])
 
     %{
@@ -87,9 +66,7 @@ defmodule GasolineSimulator.Data.Repository do
       capacity_m3: parse_float(capacity_row["capacity_gasoline_a_m3_month"]),
       processing_capacity_m3: parse_float(capacity_row["capacity_m3_month"]),
       floor_m3: parse_float(capacity_row["operating_floor_m3_2025"]),
-      floor_provenance: capacity_row["operating_floor_provenance"],
-      reference_yield: reference_yield_entry.reference_yield,
-      reference_yield_provenance: reference_yield_entry.reference_yield_provenance
+      floor_provenance: capacity_row["operating_floor_provenance"]
     }
   end
 

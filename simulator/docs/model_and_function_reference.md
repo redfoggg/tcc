@@ -8,7 +8,7 @@ contratos de software atuais. Os caminhos são relativos a `simulator/`.
 | Termo | Definição |
 |---|---|
 | Histórico 2025 | Registro estático pré-computado lido de `data/curated/historical_2025_summary.json`. O tempo de execução não o recalcula. |
-| Planejado 2025 | Simulação de janeiro a dezembro usando entradas de CSV curadas, rendimento de referência fixo por refinaria, controles anuais e um programa linear inteiro misto mensal, resolvido em duas etapas lexicográficas. |
+| Planejado 2025 | Simulação de janeiro a dezembro usando entradas de CSV curadas, rendimento simulado de gasolina A sorteado por refinaria-mês, controles anuais e um programa linear inteiro misto mensal, resolvido em duas etapas lexicográficas. |
 | Proxy de demanda de gasolina A | Gasolina A pura estimada como necessária para sustentar as vendas observadas no varejo de gasolina C. Não é demanda observada de gasolina A. |
 | FUT | Processamento bruto de petróleo dividido pela capacidade bruta de processamento de petróleo, expresso em percentual. É um indicador, não o objetivo. Quando agregado (mensal ou anual, sobre o escopo fixo), é sempre uma razão de somas, nunca uma média das razões individuais. |
 
@@ -35,7 +35,7 @@ mais nenhum conceito de refinaria excluída.
 |---|---|---|
 | $t \in T=\{1,\ldots,12\}$ | Mês, janeiro a dezembro de 2025 | índice |
 | $i \in F$ | Refinaria do escopo fixo (13 refinarias, todas presentes em todos os meses) | índice |
-| $R_i$ | Rendimento de referência fixo de gasolina A da refinaria $i$, constante nos 12 meses | razão |
+| $R_{i,t}$ | Rendimento simulado de gasolina A da refinaria $i$ no mês $t$, sorteado independentemente para essa execução | razão, em $[0.20, 0.25]$ |
 | $K^G_{i,t}$ | Capacidade teórica curada de gasolina A | m³ gasolina A/mês |
 | $K^P_{i,t}$ | Capacidade bruta de processamento de petróleo | m³ petróleo/mês |
 | $L_{i,t}$ | Piso operacional efetivo, sempre limitado a $K^G_{i,t}$ | m³ gasolina A/mês |
@@ -65,13 +65,14 @@ déficit em $u_t^{\star}$ (dentro de uma tolerância $\varepsilon=10^{-6}$ m³) 
 minimiza o processamento total de petróleo implícito:
 
 $$
-\min \sum_{i \in F}\frac{x_{i,t}}{R_i}
+\min \sum_{i \in F}\frac{x_{i,t}}{R_{i,t}}
 \quad \text{sujeito às restrições da seção 4 e a }
 u_t^{\star}-\varepsilon \le u_t \le u_t^{\star}+\varepsilon
 $$
 
 O termo minimizado na etapa 2 é o processamento de petróleo implícito, porque
-$R_i$ é a saída de gasolina A por unidade de petróleo processado. Isso não é
+$R_{i,t}$ é a saída de gasolina A por unidade de petróleo processado no mês
+$t$. Isso não é
 um MILP anual conjuntamente otimizado, porque cada $S_t$ é comprometido antes
 de resolver o mês $t+1$.
 
@@ -161,10 +162,11 @@ D_t=D_t^{base}\left(1+\frac{a}{100}\right)
 $$
 
 Valores em branco na interface são omitidos e os padrões se aplicam. Ajustes
-de demanda abaixo de -100% criam demanda negativa. Não há mais controle de
+de demanda abaixo de -100% criam demanda negativa. Não há controle de
 degradação de rendimento nem de disponibilidade/parada: todas as refinarias
-do escopo fixo estão sempre elegíveis para produzir em todo mês, com $R_i$
-fixo e imutável por controles de cenário.
+do escopo fixo estão sempre elegíveis para produzir em todo mês. $R_{i,t}$
+não é controlável pela interface: é sorteado automaticamente a cada execução
+e não pode ser fixado por controles de cenário.
 
 ### 4.7 Limites e status do solver
 
@@ -180,29 +182,27 @@ tarefa externa do Elixir também pode expirar. O NIF de dirty CPU não pode ser
 cancelado à força, então o trabalho nativo pode continuar brevemente após um
 timeout externo.
 
-## 5. Rendimento de referência fixo por refinaria
+## 5. Rendimento simulado por refinaria-mês
 
-Diferente de uma previsão móvel mensal, cada refinaria tem um único
-rendimento de referência anual, fixo para os doze meses de 2025:
-
-$$
-R_i=\frac{\sum_{t\in T} P^{obs}_{i,t}}{\sum_{t\in T} Q^{obs}_{i,t}}
-$$
-
-onde $P^{obs}_{i,t}$ é a produção observada de gasolina A e $Q^{obs}_{i,t}$ é
-o processamento observado de petróleo. Essa razão local só é usada quando é
-finita, o denominador é positivo e $0<R_i\le 1$. Caso contrário, $R_i$ recebe
-o fallback nacional ponderado:
+O modelo não usa mais um rendimento de referência fixo derivado da razão
+anual observada de cada refinaria. Em vez disso, `GasolineSimulator.Scenarios
+.YieldSampling.draw/1` sorteia, uma única vez por execução anual do
+Planejado 2025, um rendimento simulado independente para cada refinaria $i$
+e cada mês $t$:
 
 $$
-R^{fallback}=\frac{\sum_{i\in V}\sum_{t\in T} P^{obs}_{i,t}}{\sum_{i\in V}\sum_{t\in T} Q^{obs}_{i,t}}
+R_{i,t}\sim \text{Uniforme}(0.20,\ 0.25)
 $$
 
-somando apenas sobre o conjunto $V$ de refinarias com razão local válida. Em
-2025, LUBNOR (sem produção observada de gasolina A) e REAM (razão local
-observada maior que 1) usam o fallback nacional. O resultado completo, com
-totais observados, razão bruta, validade e proveniência de cada refinaria,
-está em `data/curated/anp_2025_reference_yields_by_refinery.csv`.
+O mesmo valor sorteado é reutilizado em ambas as etapas do solver daquele
+mês e em toda a renderização de resultado e exportação daquela execução. O
+intervalo `[0.20, 0.25]` é calibrado a partir do agregado nacional observado
+de gasolina A por petróleo processado em 2025, e a distribuição uniforme
+dentro desse intervalo é uma premissa de modelagem, não uma distribuição de
+probabilidade oficial por refinaria. Veja
+`docs/data_report.md#rendimento-simulado-r_it` para a calibração completa.
+$R_{i,t}$ é um rendimento simulado de gasolina A para fins de simulação, não
+uma razão observada por refinaria nem um máximo de engenharia comprovado.
 
 ## 6. FUT e proveniência histórica
 
@@ -233,7 +233,7 @@ O processamento planejado de petróleo e o FUT individual planejado por
 refinaria são:
 
 $$
-P^{plan}_{i,t}=\frac{x_{i,t}}{R_i},
+P^{plan}_{i,t}=\frac{x_{i,t}}{R_{i,t}},
 \qquad
 FUT^{plan}_{i,t}=
 \begin{cases}
@@ -252,12 +252,13 @@ FUT^{plan,Total}_{ano}=100\frac{\sum_{t=1}^{12}\sum_{i=1}^{13}P^{plan}_{i,t}}{\s
 $$
 
 Como $K^G_{i,t}$ usa um rendimento médio nacional em vez do rendimento
-próprio de cada refinaria (veja `docs/data_report.md`), uma refinaria cujo
-$R_i$ é bem maior que a média nacional pode ter $P^{plan}_{i,t}$ maior que
-$K^P_{i,t}$ quando ativa em sua capacidade máxima, o que pode fazer tanto o
-FUT individual planejado quanto o FUT Total agregado ultrapassarem 100%. Essa
-é uma consequência conhecida da limitação de $K^G_{i,t}$ descrita em
-`docs/data_report.md`, não um erro de cálculo.
+simulado sorteado para aquele mês (veja `docs/data_report.md`), um sorteio de
+$R_{i,t}$ abaixo da média nacional usada naquela fórmula pode fazer
+$P^{plan}_{i,t}$ maior que $K^P_{i,t}$ quando a refinaria está ativa em sua
+capacidade máxima, o que pode fazer tanto o FUT individual planejado quanto o
+FUT Total agregado ultrapassarem 100%. Essa é uma consequência conhecida da
+limitação de $K^G_{i,t}$ combinada com a natureza estocástica de $R_{i,t}$,
+descrita em `docs/data_report.md`, não um erro de cálculo.
 
 O FUT individual histórico não é armazenado no JSON estático (apenas os
 totais agregados por razão de somas). O FUT individual planejado existe
@@ -300,10 +301,11 @@ Um `Result` mensal planejado contém status, mês, saldo, FUT Total,
 processamento de petróleo total e capacidade de processamento total do mês,
 demanda, estoques, produção, demanda atendida, déficit, cobertura, motivo de
 falha e as 13 refinarias do escopo fixo modeladas. Cada refinaria inclui
-identidade, rendimento de referência e proveniência, capacidades, piso,
-alocação, processamento implícito, FUT individual, ativação, utilização e a
-sinalização de capacidade binding. A capacidade é binding quando uma alocação
-ativa está a menos de $10^{-6}$ m³ da capacidade efetiva.
+identidade, o rendimento simulado sorteado para aquele mês e sua
+proveniência, capacidades, piso, alocação, processamento implícito, FUT
+individual, ativação, utilização e a sinalização de capacidade binding. A
+capacidade é binding quando uma alocação ativa está a menos de $10^{-6}$ m³
+da capacidade efetiva.
 
 O resultado anual soma demanda, produção, demanda atendida, déficit,
 processamento de petróleo total e capacidade de processamento total. Também
@@ -333,8 +335,11 @@ aplicável. IDs de plano desconhecidos retornam HTTP 404.
   as vendas de gasolina C porque a fonte não separa os graus comum e premium.
 - Um único instantâneo nominal de 2025-12-31 representa todos os meses.
 - A capacidade teórica de gasolina A usa um rendimento médio nacional, não o
-  rendimento próprio de cada refinaria, o que pode fazer o FUT Total
-  planejado ultrapassar 100%, veja a seção 6.
+  rendimento simulado sorteado para cada refinaria-mês, o que pode fazer o
+  FUT Total planejado ultrapassar 100%, veja a seção 6.
+- $R_{i,t}$ é sorteado de uma distribuição uniforme em $[0.20, 0.25]$, uma
+  premissa de modelagem, não uma distribuição de probabilidade oficial por
+  refinaria.
 - Os pisos são estatísticas históricas, não taxas mínimas de operação de
   engenharia.
 - O FUT Total mantém o denominador de 13 refinarias do escopo fixo, incluindo
@@ -356,8 +361,8 @@ aplicável. IDs de plano desconhecidos retornam HTTP 404.
    a entrada do solver em Elixir.
 2. Manter resultados mensais, resumos anuais, exportações, campos do painel
    e a versão de esquema sincronizados.
-3. Atualizar rendimentos de referência, capacidade efetiva e proveniência em
-   conjunto quando a lógica de rendimento mudar.
+3. Atualizar o intervalo de sorteio do rendimento simulado, capacidade
+   efetiva e proveniência em conjunto quando a lógica de rendimento mudar.
 4. Atualizar controles, parsing da interface, controles de exportação e
    fórmulas em conjunto.
 5. Regenerar `historical_2025_summary.json` separadamente quando as fórmulas
