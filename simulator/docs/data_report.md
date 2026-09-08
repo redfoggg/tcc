@@ -23,11 +23,20 @@ pela ANP (Agência Nacional do Petróleo, Gás Natural e Biocombustíveis):
 Esses quatro arquivos foram baixados uma única vez e processados nos CSVs
 curados hoje versionados em `data/curated/`. Esse processamento filtrou linhas
 para 2025, converteu unidades, calculou razões de rendimento e aplicou as
-transformações descritas abaixo. Este repositório não inclui o código de
-download ou processamento: `data/curated/anp_2025_*` é entrada acadêmica
-estática e versionada, não o resultado de um pipeline reproduzível.
-Atualizá-la para um ano futuro exige repetir manualmente esse processo a
-partir das fontes acima.
+transformações descritas abaixo. Os dados brutos originais não são
+versionados neste repositório, e este repositório não inclui o código de
+processamento: `data/curated/anp_2025_*` é entrada acadêmica estática e
+versionada, não o resultado de um pipeline reproduzível. Atualizá-la para um
+ano futuro exige repetir manualmente esse processo a partir das fontes acima.
+
+O script `data/scripts/download_anp_sources.py` permite baixar novamente os
+quatro arquivos brutos originais a partir das fontes da ANP listadas acima,
+salvando-os em `data/original/` (`python3 data/scripts/download_anp_sources.py`).
+Ele não realiza nenhum processamento; apenas reproduz a etapa de aquisição
+descrita nesta seção. A flag `--force` re-baixa um arquivo mesmo que ele já
+exista no destino, e `--only <nome>` restringe o download a uma única fonte
+(`processamento`, `producao_gasolina_a`, `vendas_combustiveis` ou
+`capacidade_refino`).
 
 ## Valores observados, derivados e hipotéticos
 
@@ -261,5 +270,7 @@ mantidos em `data/curated/`.
   em `[0.20, 0.25]`, calibrada a partir do agregado nacional, e não reflete a
   razão local individual observada de cada refinaria, que varia bem mais
   entre refinarias como LUBNOR e REAM.
-- `data/curated/anp_2025_*` é entrada acadêmica estática para 2025. Não há
-  automação de download ou regeneração neste repositório.
+- `data/curated/anp_2025_*` é entrada acadêmica estática para 2025.
+  `data/scripts/download_anp_sources.py` automatiza apenas o download dos
+  quatro arquivos brutos originais; não há automação da regeneração dos CSVs
+  curados a partir desses arquivos neste repositório.
