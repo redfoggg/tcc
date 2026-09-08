@@ -78,48 +78,32 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   end
 
   defp parse_float_map(params) do
-    Enum.reduce(params, %{}, fn {id, value}, acc ->
-      case parse_float_input(value) do
-        nil -> acc
-        number -> Map.put(acc, id, number)
-      end
-    end)
+    params
+    |> Map.new(fn {id, value} -> {id, parse_float_input(value)} end)
+    |> Map.reject(fn {_id, value} -> is_nil(value) end)
   end
 
-  defp result_of(nil), do: nil
-  defp result_of(%{result: result}), do: result
-  defp annual_of(%{annual: annual}), do: annual
-  defp annual_of(_other), do: nil
-  defp months_of(%{months: months}), do: months
-  defp months_of(_other), do: []
-  defp ready?(%{status: :completed}), do: true
-  defp ready?(_other), do: false
+  defp fmt(value, divisor \\ 1, places \\ 1)
+  defp fmt(nil, _divisor, _places), do: "n/a"
 
-  defp decimal(value, places) do
-    :erlang.float_to_binary(value * 1.0, decimals: places)
+  defp fmt(value, divisor, places) do
+    :erlang.float_to_binary(value / divisor * 1.0, decimals: places)
   end
 
-  defp annual_volume(value), do: scaled(value, 1_000_000, 2)
-  defp monthly_volume(value), do: scaled(value, 1_000, 1)
-  defp scaled(nil, _divisor, _places), do: "n/a"
-  defp scaled(value, divisor, places), do: decimal(value / divisor, places)
+  defp annual_volume(value), do: fmt(value, 1_000_000, 2)
+  defp monthly_volume(value), do: fmt(value, 1_000, 1)
 
   defp pct(nil), do: "n/a"
-  defp pct(value), do: decimal(value * 100.0, 1)
+  defp pct(value), do: fmt(value * 100.0)
   defp fut_pct(nil), do: "n/a"
-  defp fut_pct(value), do: decimal(value, 1)
+  defp fut_pct(value), do: fmt(value)
 
-  defp signed_volume(value) when value > 0, do: "+#{annual_volume(value)}"
-  defp signed_volume(value), do: annual_volume(value)
-  defp signed_monthly_volume(value) when value > 0, do: "+#{monthly_volume(value)}"
-  defp signed_monthly_volume(value), do: monthly_volume(value)
-  defp balance_label(value) when value > 0, do: "surplus"
-  defp balance_label(value) when value < 0, do: "shortfall"
-  defp balance_label(_value), do: "balanced"
+  defp signed(value, formatter) when value > 0, do: "+#{formatter.(value)}"
+  defp signed(value, formatter), do: formatter.(value)
 
-  defp balance_class(value) when value > 0, do: "text-success"
-  defp balance_class(value) when value < 0, do: "text-error"
-  defp balance_class(_value), do: "text-base-content"
+  defp balance_info(value) when value > 0, do: {"surplus", "text-success"}
+  defp balance_info(value) when value < 0, do: {"shortfall", "text-error"}
+  defp balance_info(_value), do: {"balanced", "text-base-content"}
 
   @impl true
   def render(assigns) do
@@ -201,7 +185,7 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         </form>
 
         <.link
-          :if={ready?(@planned_run)}
+          :if={match?(%{status: :completed}, @planned_run)}
           id="dashboard-export-plan"
           href={~p"/api/plans/#{@planned_run.id}"}
           target="_blank"
@@ -217,6 +201,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   attr :historical, :map, required: true
 
   defp historical_panel(assigns) do
+    {balance_label, balance_class} = balance_info(assigns.historical.annual.balance_m3)
+    assigns = assign(assigns, balance_label: balance_label, balance_class: balance_class)
+
     ~H"""
     <section
       class="min-w-0 rounded-xl border border-base-300 bg-base-100 shadow-sm"
@@ -241,9 +228,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         />
         <.metric
           label="Signed balance"
-          value={signed_volume(@historical.annual.balance_m3)}
-          unit={"Mm³ · #{balance_label(@historical.annual.balance_m3)}"}
-          value_class={balance_class(@historical.annual.balance_m3)}
+          value={signed(@historical.annual.balance_m3, &annual_volume/1)}
+          unit={"Mm³ · #{@balance_label}"}
+          value_class={@balance_class}
         />
         <.metric
           label="FUT Total"
@@ -277,9 +264,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
                 </td>
                 <td class={[
                   "px-3 py-3 text-right font-mono tabular-nums",
-                  balance_class(month.balance_m3)
+                  elem(balance_info(month.balance_m3), 1)
                 ]}>
-                  {signed_monthly_volume(month.balance_m3)}
+                  {signed(month.balance_m3, &monthly_volume/1)}
                 </td>
                 <td class="py-3 pl-3 text-right font-mono tabular-nums">
                   {fut_pct(month.total_fut_pct)}%
@@ -296,8 +283,19 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   attr :planned_run, :map, required: true
 
   defp planned_panel(assigns) do
-    result = result_of(assigns.planned_run)
-    assigns = assign(assigns, annual: annual_of(result), months: months_of(result))
+    annual = get_in(assigns.planned_run, [Access.key(:result), Access.key(:annual)])
+    months = get_in(assigns.planned_run, [Access.key(:result), Access.key(:months)]) || []
+
+    {balance_label, balance_class} =
+      if annual, do: balance_info(annual.balance_m3), else: {nil, nil}
+
+    assigns =
+      assign(assigns,
+        annual: annual,
+        months: months,
+        balance_label: balance_label,
+        balance_class: balance_class
+      )
 
     ~H"""
     <section
@@ -329,9 +327,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
           />
           <.metric
             label="Signed balance"
-            value={signed_volume(@annual.balance_m3)}
-            unit={"Mm³ · #{balance_label(@annual.balance_m3)}"}
-            value_class={balance_class(@annual.balance_m3)}
+            value={signed(@annual.balance_m3, &annual_volume/1)}
+            unit={"Mm³ · #{@balance_label}"}
+            value_class={@balance_class}
           />
           <.metric
             label="FUT Total"
@@ -383,9 +381,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
                   </td>
                   <td class={[
                     "px-3 py-3 text-right font-mono tabular-nums",
-                    balance_class(month.balance_m3)
+                    elem(balance_info(month.balance_m3), 1)
                   ]}>
-                    {signed_monthly_volume(month.balance_m3)}
+                    {signed(month.balance_m3, &monthly_volume/1)}
                   </td>
                   <td class="py-3 pl-3 text-right font-mono tabular-nums">
                     {fut_pct(month.total_fut_pct)}%
