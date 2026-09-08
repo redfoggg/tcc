@@ -101,6 +101,12 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   defp signed(value, formatter) when value > 0, do: "+#{formatter.(value)}"
   defp signed(value, formatter), do: formatter.(value)
 
+  defp annual_of(%{result: %{annual: annual}}), do: annual
+  defp annual_of(_other), do: nil
+
+  defp months_of(%{result: %{months: months}}), do: months
+  defp months_of(_other), do: []
+
   defp balance_info(value) when value > 0, do: {"surplus", "text-success"}
   defp balance_info(value) when value < 0, do: {"shortfall", "text-error"}
   defp balance_info(_value), do: {"balanced", "text-base-content"}
@@ -283,8 +289,8 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   attr :planned_run, :map, required: true
 
   defp planned_panel(assigns) do
-    annual = get_in(assigns.planned_run, [Access.key(:result), Access.key(:annual)])
-    months = get_in(assigns.planned_run, [Access.key(:result), Access.key(:months)]) || []
+    annual = annual_of(assigns.planned_run)
+    months = months_of(assigns.planned_run)
 
     {balance_label, balance_class} =
       if annual, do: balance_info(annual.balance_m3), else: {nil, nil}
