@@ -1,7 +1,7 @@
 defmodule GasolineSimulatorWeb.PlanningController do
   use GasolineSimulatorWeb, :controller
 
-  alias GasolineSimulator.Historical
+  alias GasolineSimulator.Data.Historical
   alias GasolineSimulator.Scenarios.Orchestrator
   alias GasolineSimulator.Scenarios.PlanningExport
 

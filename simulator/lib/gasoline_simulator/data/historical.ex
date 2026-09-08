@@ -1,4 +1,4 @@
-defmodule GasolineSimulator.Historical do
+defmodule GasolineSimulator.Data.Historical do
   @artifact "historical_2025_summary.json"
 
   @spec load(keyword()) :: map()

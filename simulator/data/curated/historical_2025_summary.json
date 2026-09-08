@@ -17,7 +17,7 @@
       "RPBC",
       "RPCC"
     ],
-    "description": "Refineries in GasolineSimulator.Catalog, restricted by estudo_tcc.typ"
+    "description": "Refineries in GasolineSimulator.Data.Catalog, restricted by estudo_tcc.typ"
   },
   "units": {
     "production_supplied": "m3 gasoline A",

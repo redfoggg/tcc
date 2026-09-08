@@ -2,8 +2,8 @@
 
 Este documento especifica o modelo de otimização implementado pelo solver em
 Rust (`native/gasoline_solver/src/model.rs`, `solve.rs`, `error.rs`), pela
-camada de sequenciamento em Elixir (`lib/gasoline_simulator/problem.ex`,
-`result.ex`, `scenarios/runner.ex`, `scenarios/overrides.ex`), junto com os
+camada de sequenciamento em Elixir (`lib/gasoline_simulator/models/`,
+`scenarios/runner.ex`), junto com os
 dados estáticos de 2025 derivados da ANP que o alimentam
 (`data/curated/anp_2025_*`). Veja `docs/data_report.md` para fontes,
 premissas e escopo de refinarias.
@@ -153,7 +153,7 @@ por `deficit`, nunca por inviabilidade do solver (veja a seção 7).
 Uma falta de demanda é sempre viável: `deficit` pode crescer sem limite para
 satisfazer a equação de balanço, então uma demanda que excede a capacidade e
 o estoque disponíveis nunca torna o MILP inviável.
-`GasolineSimulator.Result` nunca reporta `deficit_m3 > 0` como status de
+`GasolineSimulator.Models.Result` nunca reporta `deficit_m3 > 0` como status de
 falha, `status` permanece `:ok`.
 
 Uma inviabilidade inesperada do HiGHS indica um modelo malformado ou uma
@@ -191,7 +191,7 @@ por mês:
 `> 0.5`), `utilization` (`allocated / capacity`, ou `0.0` se `capacity = 0`),
 `binding_capacity` (`true` se ativa e `capacity - allocated <= 1e-6`).
 
-`GasolineSimulator.Result.from_solver/2` envolve isso por mês em
+`GasolineSimulator.Models.Result.from_solver/2` envolve isso por mês em
 `%Result{}`: `status` (`:ok`, ou um átomo de tipo de erro em caso de falha),
 `month`, saldo, FUT Total, processamento de petróleo total e capacidade de
 processamento total do mês, demanda, estoques, produção, demanda atendida,
@@ -216,7 +216,7 @@ processamento total somada nos doze meses, nunca a média das doze razões
 mensais. Em caso de falha genuína de algum mês, retorna
 `{:error, %Result{}}` para o mês que falhou.
 
-## 9. Controles de planejamento anual (`GasolineSimulator.Scenarios.Overrides`)
+## 9. Controles de planejamento anual (`GasolineSimulator.Models.Overrides`)
 
 Aplicados uniformemente aos doze meses de uma execução anual:
 

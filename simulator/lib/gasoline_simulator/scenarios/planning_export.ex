@@ -1,6 +1,6 @@
 defmodule GasolineSimulator.Scenarios.PlanningExport do
-  alias GasolineSimulator.Scenarios.Plan
-  alias GasolineSimulator.Result
+  alias GasolineSimulator.Models.Plan
+  alias GasolineSimulator.Models.Result
 
   @schema_version "5.0.0"
   @mechanics_fields [
@@ -55,7 +55,8 @@ defmodule GasolineSimulator.Scenarios.PlanningExport do
       },
       error: outcome.error,
       annual: outcome.annual,
-      months: outcome.months
+      months: outcome.months,
+      mechanics: outcome.mechanics
     }
   end
 

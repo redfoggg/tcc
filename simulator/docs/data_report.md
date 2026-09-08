@@ -212,7 +212,7 @@ capacidade daquele mês.
 
 ## Escopo de refinarias
 
-O catálogo de refinarias (`lib/gasoline_simulator/catalog.ex`) e cada linha
+O catálogo de refinarias (`lib/gasoline_simulator/data/catalog.ex`) e cada linha
 curada por refinaria são restritos às refinarias explicitamente listadas no
 `estudo_tcc.typ` da raiz do repositório, que é entrada de leitura e nunca é
 modificado por este repositório:

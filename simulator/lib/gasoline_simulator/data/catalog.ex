@@ -1,4 +1,4 @@
-defmodule GasolineSimulator.Catalog do
+defmodule GasolineSimulator.Data.Catalog do
   @refineries %{
     "REPLAN" => {"Refinaria de Paulínia", "SP", []},
     "REFMAT" => {"Refinaria de Mataripe", "BA", ["RLAM", "CEBV"]},

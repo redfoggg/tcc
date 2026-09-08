@@ -1,8 +1,8 @@
 defmodule GasolineSimulator.Scenarios.RunnerTest do
   use ExUnit.Case, async: true
 
-  alias GasolineSimulator.Historical
-  alias GasolineSimulator.Scenarios.Plan
+  alias GasolineSimulator.Data.Historical
+  alias GasolineSimulator.Models.Plan
   alias GasolineSimulator.Scenarios.PlanningExport
   alias GasolineSimulator.Scenarios.Runner
 
@@ -77,6 +77,13 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
     export = PlanningExport.build(historical, plan)
 
     assert export.planned.status == :completed
+    assert is_map(export.planned.mechanics)
+
+    for {month, export_month} <- Enum.zip(months, export.planned.mechanics.months) do
+      for {refinery, exported} <- Enum.zip(month.refineries, export_month.refineries) do
+        assert_in_delta exported.simulated_yield, refinery.simulated_yield, 1.0e-12
+      end
+    end
 
     assert_in_delta export.planned.annual.total_fut_pct,
                     result.annual.total_fut_pct,

@@ -1,7 +1,7 @@
 defmodule GasolineSimulator.Scenarios.Orchestrator do
   use GenServer
 
-  alias GasolineSimulator.Scenarios.Plan
+  alias GasolineSimulator.Models.Plan
   alias GasolineSimulator.Scenarios.Runner
 
   @pubsub GasolineSimulator.PubSub

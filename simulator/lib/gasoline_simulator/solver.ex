@@ -23,8 +23,8 @@ defmodule GasolineSimulator.Solver do
   Solves one month's MILP.
 
   The input is assumed well-formed: it is always built by
-  `GasolineSimulator.Problem.to_solver_input/1` from a `%Problem{}` that
-  `GasolineSimulator.Problem.build/1` already validated.
+  `GasolineSimulator.Models.Problem.to_solver_input/1` from a `%Problem{}` that
+  `GasolineSimulator.Models.Problem.build/1` already validated.
   """
   @spec solve(solver_input(), keyword()) :: {:ok, map()} | {:error, {error_kind(), String.t()}}
   def solve(input, opts \\ []) do

@@ -1,4 +1,4 @@
-defmodule GasolineSimulator.Scenarios.Overrides do
+defmodule GasolineSimulator.Models.Overrides do
   defstruct initial_inventory_m3: 0.0,
             demand_adjustment_pct: 0.0,
             floor_overrides: %{}
@@ -9,7 +9,7 @@ defmodule GasolineSimulator.Scenarios.Overrides do
           floor_overrides: %{String.t() => float()}
         }
 
-  @spec build(map()) :: {:ok, t()} | {:error, String.t()}
+  @spec build(map()) :: {:ok, t()}
   def build(attrs) do
     values =
       attrs

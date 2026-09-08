@@ -315,14 +315,13 @@ cobertura anual e `active_refinery_ids`.
 `PlanningExport.build/3` emite a versão de esquema `5.0.0` com
 `generated_at`, comparações anuais e mensais do Histórico, e identidade,
 status, controles, timestamps, proveniência, erro opcional, comparação anual
-e comparações mensais do Planejado.
+e comparações mensais do Planejado. `planned.mechanics` guarda a mecânica
+completa da execução, inclusive o rendimento simulado sorteado de cada
+refinaria-mês.
 
-A exportação pública omite processamento de petróleo total, capacidade de
-processamento total, estoques, déficit, cobertura e a mecânica por refinaria
-no nível superior. `outcome/1` constrói `mechanics` internamente, mas
-`planned_entry/1` não o retorna. Resultados com falha, pendentes ou ausentes
-não têm comparação anual, têm uma lista de meses vazia e um erro quando
-aplicável. IDs de plano desconhecidos retornam HTTP 404.
+Resultados com falha, pendentes ou ausentes não têm comparação anual, têm
+uma lista de meses vazia e um erro quando aplicável. IDs de plano
+desconhecidos retornam HTTP 404.
 
 ## 9. Premissas e limitações
 

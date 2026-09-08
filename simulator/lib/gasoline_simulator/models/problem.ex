@@ -1,18 +1,5 @@
-defmodule GasolineSimulator.Problem do
-  defmodule Refinery do
-    @enforce_keys [:id, :name, :uf, :capacity_m3, :floor_m3, :simulated_yield]
-    defstruct [
-      :id,
-      :name,
-      :uf,
-      :simulated_yield,
-      :simulated_yield_provenance,
-      :capacity_m3,
-      :processing_capacity_m3,
-      :floor_m3,
-      :floor_provenance
-    ]
-  end
+defmodule GasolineSimulator.Models.Problem do
+  alias GasolineSimulator.Models.Refinery
 
   @enforce_keys [:month, :demand_m3, :initial_inventory_m3]
   defstruct [
@@ -23,7 +10,15 @@ defmodule GasolineSimulator.Problem do
     refineries: []
   ]
 
-  @spec build(map()) :: {:ok, %__MODULE__{}} | {:error, String.t()}
+  @type t :: %__MODULE__{
+          month: String.t(),
+          demand_m3: float(),
+          demand_provenance: String.t() | nil,
+          initial_inventory_m3: float(),
+          refineries: [Refinery.t()]
+        }
+
+  @spec build(map()) :: {:ok, t()}
   def build(attrs) do
     fields = Map.keys(Refinery.__struct__())
 
@@ -33,7 +28,7 @@ defmodule GasolineSimulator.Problem do
     {:ok, struct!(__MODULE__, Map.put(attrs, :refineries, refineries))}
   end
 
-  @spec to_solver_input(%__MODULE__{}) :: map()
+  @spec to_solver_input(t()) :: map()
   def to_solver_input(%__MODULE__{} = problem) do
     %{
       demand: problem.demand_m3,

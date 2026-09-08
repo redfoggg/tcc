@@ -1,8 +1,8 @@
 defmodule GasolineSimulator.Scenarios.Runner do
   alias GasolineSimulator.Data.Repository
-  alias GasolineSimulator.Problem
-  alias GasolineSimulator.Result
-  alias GasolineSimulator.Scenarios.Overrides
+  alias GasolineSimulator.Models.Overrides
+  alias GasolineSimulator.Models.Problem
+  alias GasolineSimulator.Models.Result
   alias GasolineSimulator.Scenarios.YieldSampling
   alias GasolineSimulator.Solver
 

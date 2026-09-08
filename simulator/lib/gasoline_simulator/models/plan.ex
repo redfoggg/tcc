@@ -1,4 +1,4 @@
-defmodule GasolineSimulator.Scenarios.Plan do
+defmodule GasolineSimulator.Models.Plan do
   @enforce_keys [:id, :params]
   defstruct [:id, :params, :result, :started_at, :completed_at, status: :pending]
 

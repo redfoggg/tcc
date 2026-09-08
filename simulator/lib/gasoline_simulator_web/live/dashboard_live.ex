@@ -2,7 +2,7 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   use GasolineSimulatorWeb, :live_view
 
   alias GasolineSimulator.Data.Repository
-  alias GasolineSimulator.Historical
+  alias GasolineSimulator.Data.Historical
   alias GasolineSimulator.Scenarios.Orchestrator
 
   @impl true
@@ -107,6 +107,15 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   defp months_of(%{result: %{months: months}}), do: months
   defp months_of(_other), do: []
 
+  defp january_refineries(months) do
+    months
+    |> Enum.find(&(&1.month == "2025-01"))
+    |> case do
+      %{refineries: refineries} -> Enum.sort_by(refineries, & &1.id)
+      _other -> []
+    end
+  end
+
   defp balance_info(value) when value > 0, do: {"surplus", "text-success"}
   defp balance_info(value) when value < 0, do: {"shortfall", "text-error"}
   defp balance_info(_value), do: {"balanced", "text-base-content"}
@@ -119,8 +128,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         <div class="max-w-4xl space-y-2">
           <h1 class="text-3xl font-bold tracking-tight">Gasoline A operations dashboard</h1>
           <p class="text-base leading-6 opacity-70">
-            Historical 2025 displays the precomputed curated record. Planned 2025 runs one
-            January-December inventory and deficit simulation using the controls below.
+            Historical 2025 displays the precomputed curated record. Planned 2025 samples a
+            new gasoline A yield in 20% to 25% for every refinery-month, then runs one
+            January-December inventory and deficit simulation.
           </p>
         </div>
 
@@ -312,6 +322,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         <h2 class="text-xl font-semibold">Planned 2025</h2>
         <span :if={@planned_run} class="badge">{@planned_run.status}</span>
       </div>
+      <p class="border-b border-base-300 px-6 py-3 text-sm opacity-70">
+        Each run independently samples gasoline A yields from Uniform(0.20, 0.25).
+      </p>
       <p :if={is_nil(@planned_run)} class="px-6 py-8 text-sm opacity-60">Not run yet.</p>
       <div
         :if={@planned_run && @planned_run.status == :failed}
@@ -393,6 +406,35 @@ defmodule GasolineSimulatorWeb.DashboardLive do
                   </td>
                   <td class="py-3 pl-3 text-right font-mono tabular-nums">
                     {fut_pct(month.total_fut_pct)}%
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div :if={january_refineries(@months) != []} class="space-y-3 px-6 py-5">
+          <h3 class="text-sm font-semibold uppercase tracking-wide opacity-60">
+            January sampled yields
+          </h3>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[32rem] text-sm" id="dashboard-january-yields">
+              <thead>
+                <tr class="border-b border-base-300 text-left text-xs uppercase tracking-wide opacity-60">
+                  <th class="py-3 pr-4 font-medium">Refinery</th>
+                  <th class="px-3 py-3 text-right font-medium">Simulated yield</th>
+                  <th class="py-3 pl-3 text-right font-medium">Allocation · 10³ m³</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-base-200">
+                <tr :for={refinery <- january_refineries(@months)} class="hover:bg-base-200/50">
+                  <td class="py-3 pr-4 font-medium whitespace-nowrap">
+                    {refinery.name} ({refinery.id})
+                  </td>
+                  <td class="px-3 py-3 text-right font-mono tabular-nums">
+                    {fmt(refinery.simulated_yield * 100.0)}%
+                  </td>
+                  <td class="py-3 pl-3 text-right font-mono tabular-nums">
+                    {monthly_volume(refinery.allocated_m3)}
                   </td>
                 </tr>
               </tbody>

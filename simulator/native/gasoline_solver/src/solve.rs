@@ -89,8 +89,8 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
         .collect();
 
     let production: f64 = facilities.iter().map(|result| result.allocated).sum();
-    let deficit_value = stage2_solution.value(deficit);
-    let ending_inventory_value = stage2_solution.value(ending_inventory);
+    let deficit_value = stage2_solution.value(deficit).max(0.0);
+    let ending_inventory_value = stage2_solution.value(ending_inventory).max(0.0);
     let served_demand = input.demand - deficit_value;
     let coverage = if input.demand > 0.0 {
         served_demand / input.demand
@@ -111,7 +111,7 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
 }
 
 fn build_facility_result(fv: &FacilityVars<'_>, solution: &impl Solution) -> FacilityResult {
-    let allocated = solution.value(fv.allocation);
+    let allocated = solution.value(fv.allocation).max(0.0);
     let active = solution.value(fv.active) > 0.5;
     let utilization = if fv.facility.capacity > 0.0 {
         allocated / fv.facility.capacity

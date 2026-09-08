@@ -25,13 +25,14 @@ carrega imediatamente a partir de `data/curated/historical_2025_summary.json`.
 - `GasolineSimulator.Data.Repository` lê os CSVs curados uma única vez para o
   ano inteiro (`load_year/1`) e retorna dois mapas simples: a demanda nacional
   por mês e os atributos de cada refinaria por mês (capacidade e capacidade de
-  processamento bruto, e piso operacional). Todas as 13 refinarias do escopo
-  fixo aparecem em todos os 12 meses. Não existe mais nenhum conceito de
-  refinaria excluída ou não modelável.
+  processamento bruto, e piso operacional). `GasolineSimulator.Data.Catalog` e
+  `GasolineSimulator.Data.Historical` ficam no mesmo contexto de dados. Todas
+  as 13 refinarias do escopo fixo aparecem em todos os 12 meses. Não existe
+  mais nenhum conceito de refinaria excluída ou não modelável.
 - `GasolineSimulator.Scenarios.YieldSampling` sorteia o rendimento simulado de
   gasolina A `R_{i,t}` de cada refinaria-mês, uma única vez por execução
   anual, de uma distribuição uniforme em `[0.20, 0.25]`.
-- `GasolineSimulator.Problem` constrói a estrutura de domínio de um mês a
+- `GasolineSimulator.Models.Problem` constrói a estrutura de domínio de um mês a
   partir dos controles do painel e dos dados curados carregados. Nenhuma
   refinaria é filtrada aqui.
 - `GasolineSimulator.Scenarios.Runner` conduz a sequência anual: carrega os
@@ -39,7 +40,7 @@ carrega imediatamente a partir de `data/curated/historical_2025_summary.json`.
   estoque final de cada mês como estoque inicial do mês seguinte, e interrompe
   toda a execução se a resolução de algum mês retornar uma falha genuína (em
   contraste com um déficit de demanda, que nunca é uma falha).
-  `GasolineSimulator.Scenarios.Overrides` aplica os controles de planejamento
+  `GasolineSimulator.Models.Overrides` aplica os controles de planejamento
   anuais (estoque inicial, ajuste de demanda e substituição do piso
   operacional por refinaria).
 - `GasolineSimulator.Scenarios.Orchestrator` é um `GenServer` que rastreia

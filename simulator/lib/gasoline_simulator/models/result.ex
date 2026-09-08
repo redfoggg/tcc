@@ -1,5 +1,5 @@
-defmodule GasolineSimulator.Result do
-  alias GasolineSimulator.Problem
+defmodule GasolineSimulator.Models.Result do
+  alias GasolineSimulator.Models.Problem
 
   defstruct [
     :status,
@@ -19,7 +19,25 @@ defmodule GasolineSimulator.Result do
     refineries: []
   ]
 
-  @spec from_solver(%Problem{}, {:ok, map()} | {:error, {atom(), String.t()}}) :: %__MODULE__{}
+  @type t :: %__MODULE__{
+          status: atom() | nil,
+          month: String.t() | nil,
+          balance_m3: float() | nil,
+          total_fut_pct: float() | nil,
+          total_petroleum_processed_m3: float() | nil,
+          total_processing_capacity_m3: float() | nil,
+          demand_m3: float() | nil,
+          starting_inventory_m3: float() | nil,
+          ending_inventory_m3: float() | nil,
+          production_m3: float() | nil,
+          served_demand_m3: float() | nil,
+          deficit_m3: float() | nil,
+          coverage: float() | nil,
+          reason: String.t() | nil,
+          refineries: [map()]
+        }
+
+  @spec from_solver(Problem.t(), {:ok, map()} | {:error, {atom(), String.t()}}) :: t()
   def from_solver(%Problem{} = problem, {:ok, native_result}) do
     refineries = merge_refineries(problem, native_result.facilities)
     total_petroleum_processed_m3 = Enum.sum(Enum.map(refineries, & &1.petroleum_processed_m3))

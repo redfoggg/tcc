@@ -1,5 +1,5 @@
 defmodule GasolineSimulator.Data.Repository do
-  alias GasolineSimulator.Catalog
+  alias GasolineSimulator.Data.Catalog
 
   @refinery_capacity_file "anp_2025_refinery_capacity_monthly.csv"
   @demand_proxy_file "anp_2025_demand_proxy_national_monthly.csv"
