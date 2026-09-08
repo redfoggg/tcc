@@ -1,0 +1,13 @@
+[package]
+name = "gasoline_solver"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "gasoline_solver"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+good_lp = { version = "1", default-features = false, features = ["highs"] }
+rustler = { version = "0.38", features = ["derive"] }
