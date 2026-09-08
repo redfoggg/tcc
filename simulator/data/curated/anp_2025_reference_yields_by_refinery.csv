@@ -1,0 +1,15 @@
+refinery_code,observed_gasoline_a_m3_2025,observed_petroleum_processed_m3_2025,raw_ratio,valid_local_ratio,reference_yield,provenance
+LUBNOR,0.000,444007.000,0.000000,false,0.248352,national_weighted_fallback_zero_local_ratio
+REAM,341136.451,105183.000,3.243266,false,0.248352,national_weighted_fallback_local_ratio_exceeds_unit_interval
+RECAP,1195597.977,3341820.000,0.357769,true,0.357769,observed_annual_weighted_ratio
+REDUC,2362490.085,12519052.000,0.188712,true,0.188712,observed_annual_weighted_ratio
+REFAP,2735915.594,9727458.000,0.281257,true,0.281257,observed_annual_weighted_ratio
+REFMAT,3412643.667,15208941.000,0.224384,true,0.224384,observed_annual_weighted_ratio
+REGAP,2390659.767,8868807.000,0.269558,true,0.269558,observed_annual_weighted_ratio
+REPAR,4020365.089,11748997.000,0.342188,true,0.342188,observed_annual_weighted_ratio
+REPLAN,6111694.774,22965169.000,0.266129,true,0.266129,observed_annual_weighted_ratio
+REVAP,2948704.377,12002072.000,0.245683,true,0.245683,observed_annual_weighted_ratio
+RNEST,22412.544,4543128.000,0.004933,true,0.004933,observed_annual_weighted_ratio
+RPBC,2729167.921,9715165.000,0.280918,true,0.280918,observed_annual_weighted_ratio
+RPCC,2553.196,1829492.000,0.001396,true,0.001396,observed_annual_weighted_ratio
+NATIONAL_FALLBACK,27932204.991,112470101.000,0.248352,true,0.248352,national_weighted_fallback_source_valid_refineries_2025

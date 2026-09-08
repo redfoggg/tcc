@@ -1,0 +1,13 @@
+month,gasolina_c_sales_m3,sales_provenance,ethanol_anidro_fraction_assumed,gasolina_a_equivalent_m3,demand_proxy_provenance,assumption_ref
+2025-01,3841733.109,observed,0.27,2804465.17,derived_assumption_not_observed,docs/data_report.md#gasoline-c-to-gasoline-a-demand-proxy
+2025-02,3412735.6,observed,0.27,2491296.988,derived_assumption_not_observed,docs/data_report.md#gasoline-c-to-gasoline-a-demand-proxy
+2025-03,3700842.412,observed,0.27,2701614.961,derived_assumption_not_observed,docs/data_report.md#gasoline-c-to-gasoline-a-demand-proxy
+2025-04,3813003.344,observed,0.27,2783492.441,derived_assumption_not_observed,docs/data_report.md#gasoline-c-to-gasoline-a-demand-proxy
+2025-05,3810733.248,observed,0.27,2781835.271,derived_assumption_not_observed,docs/data_report.md#gasoline-c-to-gasoline-a-demand-proxy
+2025-06,3706679.217,observed,0.27,2705875.828,derived_assumption_not_observed,docs/data_report.md#gasoline-c-to-gasoline-a-demand-proxy
+2025-07,3916883.267,observed,0.27,2859324.785,derived_assumption_not_observed,docs/data_report.md#gasoline-c-to-gasoline-a-demand-proxy
+2025-08,3869714.615,observed,0.3,2708800.231,derived_assumption_not_observed,docs/data_report.md#gasoline-c-to-gasoline-a-demand-proxy
+2025-09,3946697.927,observed,0.3,2762688.549,derived_assumption_not_observed,docs/data_report.md#gasoline-c-to-gasoline-a-demand-proxy
+2025-10,4145225.442,observed,0.3,2901657.809,derived_assumption_not_observed,docs/data_report.md#gasoline-c-to-gasoline-a-demand-proxy
+2025-11,3850786.813,observed,0.3,2695550.769,derived_assumption_not_observed,docs/data_report.md#gasoline-c-to-gasoline-a-demand-proxy
+2025-12,4639249.557,observed,0.3,3247474.69,derived_assumption_not_observed,docs/data_report.md#gasoline-c-to-gasoline-a-demand-proxy
