@@ -74,9 +74,23 @@ observados no Brasil, hoje diretamente sustentado pelos dados de 2025 deste
 repositório. A razão nacional ponderada de gasolina A por petróleo
 processado em 2025, somando as 13 refinarias do escopo fixo
 (`sum_i sum_t gasolina_a_m3_{i,t} / sum_i sum_t petroleo_processado_m3_{i,t}`,
-com base nos meses observados sem falha de processamento), fica em torno de
-`0,26`, próxima do topo do intervalo escolhido. As razões mensais observadas
-por refinaria individual (antes descritas em
+somando todos os 156 pares refinaria-mês presentes nos CSVs curados, sem
+nenhuma exclusão), fica em `0,250164`, ou seja, centralmente dentro do
+intervalo escolhido, não perto do topo. Essa mesma soma sobre as 13
+refinarias é próxima, mas não idêntica, da razão nacional ponderada de
+`0,248352` usada anteriormente neste repositório como
+`NATIONAL_FALLBACK` (ver `anp_2025_reference_yields_by_refinery.csv`, hoje
+removido). A pequena diferença entre `0,250164` e `0,248352` vem
+inteiramente do escopo do denominador: `0,250164` soma as 13 refinarias do
+escopo fixo, incluindo a LUBNOR e a REAM, enquanto `0,248352` somava apenas
+as 11 refinarias com razão local válida, excluindo a LUBNOR (que não teve
+produção observada de gasolina A em 2025) e a REAM (cuja razão local
+ultrapassa 1 porque vários meses reportam `total_processado_m3 = 0` junto
+com produção positiva de gasolina A, um problema conhecido de qualidade de
+dado). Os dois números são legítimos para o respectivo escopo que descrevem
+e ambos são consistentes com a calibração de `[0.20, 0.25]`, não uma
+evidência contra ela. As razões mensais observadas por refinaria individual
+(antes descritas em
 `data/curated/anp_2025_derivative_yields_by_refinery_monthly.csv`) variam
 muito mais entre refinarias, algumas bem abaixo e algumas acima de
 `[0.20, 0.25]`, refletindo diferenças de escopo, mix de produto e qualidade
