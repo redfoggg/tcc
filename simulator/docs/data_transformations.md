@@ -60,11 +60,10 @@ capacidade convertida).
 
 ## Escopo
 
-Catálogo em `lib/gasoline_simulator/data/catalog.ex`: RNEST, REFMAT (aliases
-RLAM, CEBV), RECAP, REDUC, REFAP, REGAP, REPAR, RPBC, REPLAN, REVAP, LUBNOR,
-REAM (alias REMAN) e RPCC. Clara Camarão usa `RPCC`, não o rótulo `RECAP` de
-`estudo_tcc.typ`. Fora do modelo: DAX OIL, MANGUINHOS, PARANÁ XISTO,
-RIOGRANDENSE, SSOIL e UNIVEN.
+Catálogo em `lib/gasoline_simulator/data/catalog.ex`: RNEST, REFMAT, RECAP,
+REDUC, REFAP, REGAP, REPAR, RPBC, REPLAN, REVAP, LUBNOR, REAM e RPCC.
+Clara Camarão usa `RPCC`, não o rótulo `RECAP` de `estudo_tcc.typ`. Fora do
+modelo: DAX OIL, MANGUINHOS, PARANÁ XISTO, RIOGRANDENSE, SSOIL e UNIVEN.
 
 ## Limitações
 

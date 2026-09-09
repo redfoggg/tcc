@@ -148,16 +148,6 @@ defmodule GasolineSimulatorWeb.DashboardLive do
 
           <.button id="dashboard-run-plan">Executar Planejado 2025</.button>
         </form>
-
-        <.link
-          :if={match?(%{status: :completed}, @planned_run)}
-          id="dashboard-export-plan"
-          href={~p"/api/plans/#{@planned_run.id}"}
-          target="_blank"
-          class="link link-primary text-sm"
-        >
-          Exportar JSON do Histórico 2025 e do Planejado 2025
-        </.link>
       </div>
     </Layouts.app>
     """

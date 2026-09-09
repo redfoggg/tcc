@@ -8,17 +8,16 @@ Caminhos relativos a `simulator/`. A matemática está em
 | Módulo | Papel |
 |---|---|
 | `Data.Repository` | Lê demanda, $K^G$, $K^P$ e $\hat R_i$ dos CSVs |
-| `Data.Catalog` | Nomes, UFs e aliases das 13 refinarias |
+| `Data.Catalog` | Nomes e UFs das 13 refinarias |
 | `Data.Historical` | Lê `historical_2025_summary.json` |
 | `Scenarios.YieldSampling` | Sorteia $R_{i,t} \sim \text{Uniforme}(0{,}20,\ \hat R_i)$ |
-| `Models.Overrides` | Estoque inicial e ajuste de demanda |
+| `Models.Overrides` | Struct de estoque inicial e ajuste de demanda |
 | `Models.Problem` | Monta o mês e a entrada do NIF |
 | `Models.Refinery` | Struct da refinaria no problema |
 | `Models.Result` | Junta solução nativa, FUT e rendimento usado |
 | `Models.Plan` | Estado em memória de uma execução |
 | `Scenarios.Runner` | Sequência jan-dez e resumo anual |
 | `Scenarios.Orchestrator` | `GenServer` e PubSub do painel |
-| `Scenarios.PlanningExport` | JSON esquema `5.0.0` |
 | `Solver` / `Solver.Native` | Timeout Elixir e NIF Rustler |
 
 Structs de domínio ficam em `lib/gasoline_simulator/models/`.
@@ -44,12 +43,9 @@ Falhas genuínas: `:invalid_input`, `:solver_failure`, `:solver_panic`,
 Cada mês traz saldo, FUT Total, processamento implícito, capacidade bruta,
 estoques, produção, demanda atendida, déficit, cobertura e as 13 refinarias
 com o `simulated_yield` usado. Ativação se o binário for maior que 0,5.
-Capacidade binding se ativa e $K^G - x \le 10^{-6}$.
 
-O anual soma volumes e processamentos. Também lista `active_refinery_ids`.
+O anual soma volumes e processamentos.
 
-## Painel e exportação
+## Painel
 
-A página está em português. `GET /api/plans/:planned_id` exporta Histórico e
-Planejado. `planned.mechanics` guarda o rendimento sorteado de cada
-refinaria-mês. Planos vivem só na memória do `GenServer`.
+A página está em português. Planos vivem só na memória do `GenServer`.

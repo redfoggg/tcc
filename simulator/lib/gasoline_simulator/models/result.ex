@@ -83,13 +83,11 @@ defmodule GasolineSimulator.Models.Result do
         :name,
         :uf,
         :simulated_yield,
-        :simulated_yield_provenance,
         :capacity_m3,
         :processing_capacity_m3,
-        :floor_m3,
-        :floor_provenance
+        :floor_m3
       ])
-      |> Map.merge(Map.take(facility, [:active, :utilization, :binding_capacity]))
+      |> Map.merge(Map.take(facility, [:active]))
       |> Map.put(:allocated_m3, facility.allocated)
       |> Map.put(:petroleum_processed_m3, facility.allocated / refinery.simulated_yield)
       |> then(fn refinery_result ->

@@ -5,7 +5,6 @@ defmodule GasolineSimulator.Models.Problem do
   defstruct [
     :month,
     :demand_m3,
-    :demand_provenance,
     :initial_inventory_m3,
     :max_petroleum_m3,
     refineries: []
@@ -14,7 +13,6 @@ defmodule GasolineSimulator.Models.Problem do
   @type t :: %__MODULE__{
           month: String.t(),
           demand_m3: float(),
-          demand_provenance: String.t() | nil,
           initial_inventory_m3: float(),
           max_petroleum_m3: float(),
           refineries: [Refinery.t()]

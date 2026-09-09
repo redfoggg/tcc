@@ -1,9 +1,6 @@
 defmodule GasolineSimulator.Scenarios.RunnerTest do
   use ExUnit.Case, async: true
 
-  alias GasolineSimulator.Data.Historical
-  alias GasolineSimulator.Models.Plan
-  alias GasolineSimulator.Scenarios.PlanningExport
   alias GasolineSimulator.Scenarios.Runner
 
   @moduletag :annual_smoke
@@ -140,38 +137,12 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
   end
 
   test "the sampled simulated yield is the same value used throughout the result for that run" do
-    assert {:ok, %{months: months} = result} = Runner.run(%{})
+    assert {:ok, %{months: months}} = Runner.run(%{})
 
     for month <- months, refinery <- month.refineries do
       assert_in_delta refinery.petroleum_processed_m3,
                       refinery.allocated_m3 / refinery.simulated_yield,
                       1.0e-6
     end
-
-    historical = Historical.load()
-
-    plan = %Plan{
-      id: "runner-test-plan",
-      params: %{},
-      status: :completed,
-      result: result,
-      started_at: DateTime.utc_now(),
-      completed_at: DateTime.utc_now()
-    }
-
-    export = PlanningExport.build(historical, plan)
-
-    assert export.planned.status == :completed
-    assert is_map(export.planned.mechanics)
-
-    for {month, export_month} <- Enum.zip(months, export.planned.mechanics.months) do
-      for {refinery, exported} <- Enum.zip(month.refineries, export_month.refineries) do
-        assert_in_delta exported.simulated_yield, refinery.simulated_yield, 1.0e-12
-      end
-    end
-
-    assert_in_delta export.planned.annual.total_fut_pct,
-                    result.annual.total_fut_pct,
-                    1.0e-6
   end
 end

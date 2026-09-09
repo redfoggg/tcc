@@ -19,7 +19,7 @@ escopo fixo entram em todos os meses.
 | Documento | Conteúdo |
 |---|---|
 | `docs/model_specification.md` | Conjuntos, restrições e FUT |
-| `docs/model_runtime.md` | Módulos Elixir e Rust, timeout e exportação |
+| `docs/model_runtime.md` | Módulos Elixir e Rust, timeout e painel |
 | `docs/data_report.md` | Fontes ANP e arquivos curados |
 | `docs/data_transformations.md` | Conversões, calibração e limitações |
 

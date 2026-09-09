@@ -6,9 +6,6 @@ defmodule GasolineSimulator.Data.Repository do
   @production_file "anp_2025_gasoline_a_production_by_refinery_monthly.csv"
   @max_plausible_observed_yield 0.40
 
-  @spec months() :: [1..12]
-  def months, do: Enum.to_list(1..12)
-
   @spec month_key(1..12) :: String.t()
   def month_key(month) when month in 1..12,
     do: "2025-" <> String.pad_leading(Integer.to_string(month), 2, "0")
@@ -35,16 +32,7 @@ defmodule GasolineSimulator.Data.Repository do
     |> Path.join(@demand_proxy_file)
     |> read_csv_rows()
     |> Map.new(fn row ->
-      {month_index(row["month"]),
-       %{
-         demand_m3: parse_float(row["gasolina_a_equivalent_m3"]),
-         demand_provenance:
-           "sales-derived gasoline A equivalent demand proxy " <>
-             "(gasolina_c_sales_m3=#{row["gasolina_c_sales_m3"]}, " <>
-             "ethanol_anidro_fraction_assumed=#{row["ethanol_anidro_fraction_assumed"]}, " <>
-             "demand_proxy_provenance=#{row["demand_proxy_provenance"]}, " <>
-             "assumption_ref=#{row["assumption_ref"]})"
-       }}
+      {month_index(row["month"]), %{demand_m3: parse_float(row["gasolina_a_equivalent_m3"])}}
     end)
   end
 

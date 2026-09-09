@@ -53,15 +53,4 @@ defmodule GasolineSimulator.Scenarios.YieldSamplingTest do
     assert_in_delta result[1]["missing"], 0.20, 1.0e-12
     assert_in_delta result[1]["impossible"], 0.20, 1.0e-12
   end
-
-  test "provenance/0 describes the 0.20-to-observed draw" do
-    provenance = YieldSampling.provenance()
-
-    assert is_binary(provenance)
-    refute provenance == ""
-    assert provenance =~ "Uniform"
-    assert provenance =~ "0.20"
-    assert provenance =~ "observed"
-    assert provenance =~ "refinery-month"
-  end
 end
