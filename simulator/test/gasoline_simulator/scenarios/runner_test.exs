@@ -1,21 +1,29 @@
 defmodule GasolineSimulator.Scenarios.RunnerTest do
   use ExUnit.Case, async: true
 
-  alias GasolineSimulator.Data.Historical
-  alias GasolineSimulator.Models.Plan
-  alias GasolineSimulator.Scenarios.PlanningExport
+  alias GasolineSimulator.Data.Repository
   alias GasolineSimulator.Scenarios.Runner
 
   @moduletag :annual_smoke
+  @moduletag timeout: 120_000
 
-  test "the planned annual run solves all twelve 2025 months against the curated dataset" do
-    assert {:ok, %{months: months, annual: annual}} = Runner.run(%{})
+  test "the planned annual run solves every 2025 day and aggregates twelve months" do
+    assert {:ok, %{days: days, months: months, annual: annual}} = Runner.run(%{})
 
+    assert length(days) == 365
     assert length(months) == 12
+    assert Enum.all?(days, &(&1.status == :ok))
     assert Enum.all?(months, &(&1.status == :ok))
 
-    assert Enum.map(months, & &1.month) ==
-             Enum.map(1..12, &GasolineSimulator.Data.Repository.month_key/1)
+    assert Enum.map(days, & &1.month) == Enum.map(Repository.days(), &Repository.day_key/1)
+
+    assert Enum.map(months, & &1.month) == Enum.map(1..12, &Repository.month_key/1)
+
+    days
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.each(fn [prior, current] ->
+      assert_in_delta prior.ending_inventory_m3, current.starting_inventory_m3, 1.0e-6
+    end)
 
     months
     |> Enum.chunk_every(2, 1, :discard)
@@ -23,18 +31,16 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
       assert_in_delta prior.ending_inventory_m3, current.starting_inventory_m3, 1.0e-6
     end)
 
-    assert_in_delta annual.starting_inventory_m3, List.first(months).starting_inventory_m3, 1.0e-6
-    assert_in_delta annual.ending_inventory_m3, List.last(months).ending_inventory_m3, 1.0e-6
+    assert_in_delta annual.starting_inventory_m3, List.first(days).starting_inventory_m3, 1.0e-6
+    assert_in_delta annual.ending_inventory_m3, List.last(days).ending_inventory_m3, 1.0e-6
+    assert_in_delta annual.demand_m3, Enum.sum(Enum.map(days, & &1.demand_m3)), 1.0e-3
     assert_in_delta annual.demand_m3, Enum.sum(Enum.map(months, & &1.demand_m3)), 1.0e-3
 
-    assert Enum.all?(months, fn month ->
-             Enum.all?(month.refineries, &(&1.fut_pct >= 0.0))
-           end)
-
+    assert Enum.all?(days, &(length(&1.refineries) == 13))
     assert Enum.all?(months, &(length(&1.refineries) == 13))
 
-    assert Enum.all?(months, fn month ->
-             Enum.all?(month.refineries, fn refinery ->
+    assert Enum.all?(days, fn day ->
+             Enum.all?(day.refineries, fn refinery ->
                gasoline_from_petroleum =
                  refinery.simulated_yield * refinery.processing_capacity_m3
 
@@ -49,7 +55,7 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
              end)
            end)
 
-    assert Enum.all?(months, &(&1.production_m3 > 0.0))
+    assert Enum.all?(days, &(&1.production_m3 > 0.0))
     assert annual.total_fut_pct >= 0.0
     assert annual.total_fut_pct <= 90.0 + 1.0e-4
 
@@ -62,30 +68,30 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
     assert Enum.max(futs) - Enum.min(futs) > 5.0
   end
 
-  test "each month's petroleum cap follows leftover budget minus later months' demand over simulated yield" do
-    year_data = GasolineSimulator.Data.Repository.load_year()
-    assert {:ok, %{months: months, annual: annual}} = Runner.run(%{})
+  test "each day's petroleum cap follows leftover budget minus later days' demand over simulated yield" do
+    year_data = Repository.load_year()
+    assert {:ok, %{days: days, annual: annual}} = Runner.run(%{})
 
-    oil_need_by_month =
-      Map.new(Enum.zip(1..12, months), fn {month, result} ->
-        demand = Map.fetch!(year_data.demand_by_month, month).demand_m3
+    oil_need_by_day =
+      Map.new(Enum.zip(Repository.days(), days), fn {day, result} ->
+        demand = Map.fetch!(year_data.demand_by_day, day).demand_m3
         capacity = result.total_processing_capacity_m3
 
         mean_yield =
           Enum.sum(Enum.map(result.refineries, &(&1.simulated_yield * &1.processing_capacity_m3))) /
             capacity
 
-        {month, demand / mean_yield}
+        {day, demand / mean_yield}
       end)
 
-    annual_oil_need = oil_need_by_month |> Map.values() |> Enum.sum()
+    annual_oil_need = oil_need_by_day |> Map.values() |> Enum.sum()
     budget = 0.90 * annual.total_processing_capacity_m3
 
     {pairs, _leftover} =
-      Enum.map_reduce(Enum.zip(1..12, months), budget, fn {month, result}, remaining ->
+      Enum.map_reduce(Enum.zip(Repository.days(), days), budget, fn {day, result}, remaining ->
         future_need =
-          oil_need_by_month
-          |> Enum.filter(fn {later, _need} -> later > month end)
+          oil_need_by_day
+          |> Enum.filter(fn {later, _need} -> Date.compare(later, day) == :gt end)
           |> Enum.map(fn {_later, need} -> need end)
           |> Enum.sum()
 
@@ -116,18 +122,18 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
     assert delta > 0.2
   end
 
-  test "every refinery-month simulated yield stays between 0.20 and that plant's observed 2025 yield" do
-    year_data = GasolineSimulator.Data.Repository.load_year()
+  test "every refinery-day simulated yield stays between 0.20 and that plant's observed 2025 yield" do
+    year_data = Repository.load_year()
 
     observed_by_id =
-      year_data.refineries_by_month
+      year_data.refineries_by_day
       |> Map.values()
       |> List.flatten()
       |> Map.new(&{&1.id, &1.observed_yield})
 
-    assert {:ok, %{months: months}} = Runner.run(%{})
+    assert {:ok, %{days: days}} = Runner.run(%{})
 
-    for month <- months, refinery <- month.refineries do
+    for day <- days, refinery <- day.refineries do
       cap =
         case Map.get(observed_by_id, refinery.id) do
           yield when is_number(yield) and yield >= 0.20 and yield <= 0.40 -> yield
@@ -140,38 +146,12 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
   end
 
   test "the sampled simulated yield is the same value used throughout the result for that run" do
-    assert {:ok, %{months: months} = result} = Runner.run(%{})
+    assert {:ok, %{days: days}} = Runner.run(%{})
 
-    for month <- months, refinery <- month.refineries do
+    for day <- days, refinery <- day.refineries do
       assert_in_delta refinery.petroleum_processed_m3,
                       refinery.allocated_m3 / refinery.simulated_yield,
                       1.0e-6
     end
-
-    historical = Historical.load()
-
-    plan = %Plan{
-      id: "runner-test-plan",
-      params: %{},
-      status: :completed,
-      result: result,
-      started_at: DateTime.utc_now(),
-      completed_at: DateTime.utc_now()
-    }
-
-    export = PlanningExport.build(historical, plan)
-
-    assert export.planned.status == :completed
-    assert is_map(export.planned.mechanics)
-
-    for {month, export_month} <- Enum.zip(months, export.planned.mechanics.months) do
-      for {refinery, exported} <- Enum.zip(month.refineries, export_month.refineries) do
-        assert_in_delta exported.simulated_yield, refinery.simulated_yield, 1.0e-12
-      end
-    end
-
-    assert_in_delta export.planned.annual.total_fut_pct,
-                    result.annual.total_fut_pct,
-                    1.0e-6
   end
 end

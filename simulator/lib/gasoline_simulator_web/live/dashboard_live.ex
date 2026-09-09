@@ -148,16 +148,6 @@ defmodule GasolineSimulatorWeb.DashboardLive do
 
           <.button id="dashboard-run-plan">Executar Planejado 2025</.button>
         </form>
-
-        <.link
-          :if={match?(%{status: :completed}, @planned_run)}
-          id="dashboard-export-plan"
-          href={~p"/api/plans/#{@planned_run.id}"}
-          target="_blank"
-          class="link link-primary text-sm"
-        >
-          Exportar JSON do Histórico 2025 e do Planejado 2025
-        </.link>
       </div>
     </Layouts.app>
     """
@@ -272,8 +262,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         <span :if={@planned_run} class="badge">{plan_status(@planned_run.status)}</span>
       </div>
       <p class="border-b border-base-300 px-6 py-3 text-sm opacity-70">
-        Cada execução sorteia rendimentos de gasolina A de forma independente em
-        Uniform(0.20, rendimento observado da refinaria em 2025).
+        O solver decide cada dia de 2025. O painel agrega esses dias em mês e
+        ano. Cada execução sorteia rendimentos diários em Uniform(0.20,
+        rendimento observado da refinaria em 2025).
       </p>
       <p :if={is_nil(@planned_run)} class="px-6 py-8 text-sm opacity-60">Ainda não executado.</p>
       <div

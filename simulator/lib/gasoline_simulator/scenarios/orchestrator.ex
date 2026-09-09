@@ -18,10 +18,6 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
     GenServer.call(server, {:run_plan, params})
   end
 
-  def get_plan(id, server \\ __MODULE__) do
-    GenServer.call(server, {:get_plan, id})
-  end
-
   def subscribe do
     Phoenix.PubSub.subscribe(@pubsub, @topic)
   end
@@ -52,11 +48,6 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
       |> put_in([:refs, ref], id)
 
     {:reply, {:ok, plan}, state}
-  end
-
-  @impl true
-  def handle_call({:get_plan, id}, _from, state) do
-    {:reply, Map.fetch(state.plans, id), state}
   end
 
   @impl true

@@ -21,8 +21,6 @@ pub struct FacilityResult {
     pub id: String,
     pub allocated: f64,
     pub active: bool,
-    pub utilization: f64,
-    pub binding_capacity: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, NifMap)]

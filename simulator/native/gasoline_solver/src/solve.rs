@@ -8,7 +8,6 @@ use good_lp::{
 };
 use std::time::Instant;
 
-const BINDING_EPS: f64 = 1e-6;
 const DEFICIT_TOLERANCE: f64 = 1e-6;
 
 struct FacilityVars<'a> {
@@ -114,19 +113,11 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
 fn build_facility_result(fv: &FacilityVars<'_>, solution: &impl Solution) -> FacilityResult {
     let allocated = solution.value(fv.allocation).max(0.0);
     let active = solution.value(fv.active) > 0.5;
-    let utilization = if fv.facility.capacity > 0.0 {
-        allocated / fv.facility.capacity
-    } else {
-        0.0
-    };
-    let binding_capacity = active && (fv.facility.capacity - allocated) <= BINDING_EPS;
 
     FacilityResult {
         id: fv.facility.id.clone(),
         allocated,
         active,
-        utilization,
-        binding_capacity,
     }
 }
 

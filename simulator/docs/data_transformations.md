@@ -38,8 +38,11 @@ de 2025 (razão de somas no ano). Valores fora de $(0,\ 0{,}40]$ viram
 piso $0{,}20$.
 
 $$
-R_{i,t} \sim \text{Uniforme}(0{,}20,\ \hat R_i)
+R_{i,d} \sim \text{Uniforme}(0{,}20,\ \hat R_i)
 $$
+
+A demanda e as capacidades diárias são o valor mensal dividido pelos dias
+do mês.
 
 A razão nacional 2025 no escopo das 13 refinarias é `0,250164`. O CSV de
 rendimentos derivados só documenta a variação histórica mensal por
@@ -60,14 +63,13 @@ capacidade convertida).
 
 ## Escopo
 
-Catálogo em `lib/gasoline_simulator/data/catalog.ex`: RNEST, REFMAT (aliases
-RLAM, CEBV), RECAP, REDUC, REFAP, REGAP, REPAR, RPBC, REPLAN, REVAP, LUBNOR,
-REAM (alias REMAN) e RPCC. Clara Camarão usa `RPCC`, não o rótulo `RECAP` de
-`estudo_tcc.typ`. Fora do modelo: DAX OIL, MANGUINHOS, PARANÁ XISTO,
-RIOGRANDENSE, SSOIL e UNIVEN.
+Catálogo em `lib/gasoline_simulator/data/catalog.ex`: RNEST, REFMAT, RECAP,
+REDUC, REFAP, REGAP, REPAR, RPBC, REPLAN, REVAP, LUBNOR, REAM e RPCC.
+Clara Camarão usa `RPCC`, não o rótulo `RECAP` de `estudo_tcc.typ`. Fora do
+modelo: DAX OIL, MANGUINHOS, PARANÁ XISTO, RIOGRANDENSE, SSOIL e UNIVEN.
 
 ## Limitações
 
 - $K^G$ usa média nacional
 - Um único instantâneo de capacidade cobre o ano inteiro
-- $R_{i,t}$ não é rendimento de engenharia por refinaria
+- $R_{i,d}$ não é rendimento de engenharia por refinaria

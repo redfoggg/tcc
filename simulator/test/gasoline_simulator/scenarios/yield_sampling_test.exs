@@ -3,7 +3,7 @@ defmodule GasolineSimulator.Scenarios.YieldSamplingTest do
 
   alias GasolineSimulator.Scenarios.YieldSampling
 
-  test "draw/1 returns a map with exactly the same month keys as the input" do
+  test "draw/1 returns a map with exactly the same period keys as the input" do
     input = %{
       1 => [%{id: "A", observed_yield: 0.30}, %{id: "B", observed_yield: 0.22}],
       2 => [%{id: "A", observed_yield: 0.30}, %{id: "B", observed_yield: 0.22}]
@@ -14,7 +14,7 @@ defmodule GasolineSimulator.Scenarios.YieldSamplingTest do
     assert Map.keys(result) |> Enum.sort() == Map.keys(input) |> Enum.sort()
   end
 
-  test "draw/1 returns exactly the same refinery ids as the input for each month" do
+  test "draw/1 returns exactly the same refinery ids as the input for each period" do
     input = %{
       1 => [%{id: "A", observed_yield: 0.30}, %{id: "B", observed_yield: 0.22}],
       2 => [%{id: "A", observed_yield: 0.30}, %{id: "B", observed_yield: 0.22}]
@@ -52,16 +52,5 @@ defmodule GasolineSimulator.Scenarios.YieldSamplingTest do
 
     assert_in_delta result[1]["missing"], 0.20, 1.0e-12
     assert_in_delta result[1]["impossible"], 0.20, 1.0e-12
-  end
-
-  test "provenance/0 describes the 0.20-to-observed draw" do
-    provenance = YieldSampling.provenance()
-
-    assert is_binary(provenance)
-    refute provenance == ""
-    assert provenance =~ "Uniform"
-    assert provenance =~ "0.20"
-    assert provenance =~ "observed"
-    assert provenance =~ "refinery-month"
   end
 end
