@@ -28,13 +28,14 @@ para `data/original/`. Não regenera os CSVs curados. Flags: `--force` e
 | `historical_2025_summary.json` | Painel Histórico 2025 |
 
 O planejamento não lê o CSV de rendimentos derivados. O teto $\hat R_i$
-do sorteio vem da produção de gasolina A e do processamento observado.
+do sorteio diário vem da produção de gasolina A e do processamento
+observado.
 
 ## Categorias
 
 - Observado: processamento, produção de gasolina A e vendas de gasolina C
 - Derivado: proxy de demanda e capacidades em m³
-- Simulado: $R_{i,t}$
+- Simulado: $R_{i,d}$
 - Hipotético: estoque inicial e ajuste de demanda
 
 Colunas `*_provenance` viajam com os CSVs. O `Repository` não revalida esse

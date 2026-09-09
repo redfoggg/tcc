@@ -3,7 +3,7 @@ defmodule GasolineSimulator.Scenarios.YieldSamplingTest do
 
   alias GasolineSimulator.Scenarios.YieldSampling
 
-  test "draw/1 returns a map with exactly the same month keys as the input" do
+  test "draw/1 returns a map with exactly the same period keys as the input" do
     input = %{
       1 => [%{id: "A", observed_yield: 0.30}, %{id: "B", observed_yield: 0.22}],
       2 => [%{id: "A", observed_yield: 0.30}, %{id: "B", observed_yield: 0.22}]
@@ -14,7 +14,7 @@ defmodule GasolineSimulator.Scenarios.YieldSamplingTest do
     assert Map.keys(result) |> Enum.sort() == Map.keys(input) |> Enum.sort()
   end
 
-  test "draw/1 returns exactly the same refinery ids as the input for each month" do
+  test "draw/1 returns exactly the same refinery ids as the input for each period" do
     input = %{
       1 => [%{id: "A", observed_yield: 0.30}, %{id: "B", observed_yield: 0.22}],
       2 => [%{id: "A", observed_yield: 0.30}, %{id: "B", observed_yield: 0.22}]

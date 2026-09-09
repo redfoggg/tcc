@@ -3,9 +3,9 @@ defmodule GasolineSimulator.Scenarios.YieldSampling do
   @max_plausible_observed_yield 0.40
 
   @spec draw(%{(1..12) => [map()]}) :: %{(1..12) => %{String.t() => float()}}
-  def draw(refineries_by_month) do
-    Map.new(refineries_by_month, fn {month, refineries} ->
-      {month, Map.new(refineries, &{&1.id, sample(&1)})}
+  def draw(refineries_by_period) do
+    Map.new(refineries_by_period, fn {period, refineries} ->
+      {period, Map.new(refineries, &{&1.id, sample(&1)})}
     end)
   end
 

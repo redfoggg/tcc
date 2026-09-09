@@ -12,35 +12,35 @@ defmodule GasolineSimulator.Scenarios.Runner do
   def run(params \\ %{}, opts \\ []) do
     overrides = overrides(params)
     year_data = Repository.load_year(Keyword.take(opts, [:data_dir]))
-    simulated_yields = YieldSampling.draw(year_data.refineries_by_month)
+    simulated_yields = YieldSampling.draw(year_data.refineries_by_day)
     solver_opts = Keyword.take(opts, [:timeout, :task_supervisor])
 
-    with {:ok, months} <- run_months(overrides, year_data, simulated_yields, solver_opts) do
-      {:ok, %{months: months, annual: summarize(months)}}
+    with {:ok, days} <- run_days(overrides, year_data, simulated_yields, solver_opts) do
+      months = months_from_days(days)
+      {:ok, %{days: days, months: months, annual: summarize(days)}}
     end
   end
 
-  defp run_months(overrides, year_data, simulated_yields, solver_opts) do
+  defp run_days(overrides, year_data, simulated_yields, solver_opts) do
     petroleum_budget = annual_petroleum_budget(year_data)
-    oil_need_by_month = oil_need_by_month(year_data, overrides, simulated_yields)
-    annual_oil_need = oil_need_by_month |> Map.values() |> Enum.sum()
+    oil_need_by_day = oil_need_by_day(year_data, overrides, simulated_yields)
+    annual_oil_need = oil_need_by_day |> Map.values() |> Enum.sum()
 
-    1..12
+    Repository.days()
     |> Enum.reduce_while(
       {[], overrides.initial_inventory_m3, petroleum_budget},
-      fn month, {acc, opening, remaining} ->
+      fn day, {acc, opening, remaining} ->
         cap =
-          month_petroleum_cap(
-            month,
+          day_petroleum_cap(
+            day,
             remaining,
             petroleum_budget,
             annual_oil_need,
-            oil_need_by_month,
+            oil_need_by_day,
             year_data
           )
 
-        result =
-          solve_month(month, opening, cap, overrides, year_data, simulated_yields, solver_opts)
+        result = solve_day(day, opening, cap, overrides, year_data, simulated_yields, solver_opts)
 
         if result.status == :ok do
           leftover = max(remaining - result.total_petroleum_processed_m3, 0.0)
@@ -56,27 +56,19 @@ defmodule GasolineSimulator.Scenarios.Runner do
     end
   end
 
-  defp solve_month(
-         month,
-         opening,
-         max_petroleum,
-         overrides,
-         year_data,
-         simulated_yields,
-         solver_opts
-       ) do
-    month_yields = Map.fetch!(simulated_yields, month)
-    demand = Map.fetch!(year_data.demand_by_month, month).demand_m3
+  defp solve_day(day, opening, max_petroleum, overrides, year_data, simulated_yields, solver_opts) do
+    day_yields = Map.fetch!(simulated_yields, day)
+    demand = Map.fetch!(year_data.demand_by_day, day).demand_m3
 
     {:ok, problem} =
       Problem.build(%{
-        month: Repository.month_key(month),
+        month: Repository.day_key(day),
         demand_m3: adjusted_demand(overrides, demand),
         initial_inventory_m3: opening,
         max_petroleum_m3: max_petroleum,
         refineries:
-          Enum.map(Map.fetch!(year_data.refineries_by_month, month), fn refinery ->
-            Map.put(refinery, :simulated_yield, Map.fetch!(month_yields, refinery.id))
+          Enum.map(Map.fetch!(year_data.refineries_by_day, day), fn refinery ->
+            Map.put(refinery, :simulated_yield, Map.fetch!(day_yields, refinery.id))
           end)
       })
 
@@ -84,48 +76,48 @@ defmodule GasolineSimulator.Scenarios.Runner do
   end
 
   defp annual_petroleum_budget(year_data) do
-    year_data.refineries_by_month
+    year_data.refineries_by_day
     |> Map.values()
     |> List.flatten()
     |> processing_capacity()
     |> Kernel.*(@annual_fut_ratio)
   end
 
-  defp month_petroleum_cap(
-         month,
+  defp day_petroleum_cap(
+         day,
          remaining,
          petroleum_budget,
          annual_oil_need,
-         oil_need_by_month,
+         oil_need_by_day,
          year_data
        ) do
-    month_capacity = processing_capacity(Map.fetch!(year_data.refineries_by_month, month))
+    day_capacity = processing_capacity(Map.fetch!(year_data.refineries_by_day, day))
 
     future_need =
-      oil_need_by_month
-      |> Enum.filter(fn {later, _need} -> later > month end)
+      oil_need_by_day
+      |> Enum.filter(fn {later, _need} -> Date.compare(later, day) == :gt end)
       |> Enum.map(fn {_later, need} -> need end)
       |> Enum.sum()
 
     reserved = petroleum_budget * future_need / annual_oil_need
-    min(month_capacity, max(remaining - reserved, 0.0))
+    min(day_capacity, max(remaining - reserved, 0.0))
   end
 
-  defp oil_need_by_month(year_data, overrides, simulated_yields) do
-    Map.new(year_data.demand_by_month, fn {month, entry} ->
+  defp oil_need_by_day(year_data, overrides, simulated_yields) do
+    Map.new(year_data.demand_by_day, fn {day, entry} ->
       demand = adjusted_demand(overrides, entry.demand_m3)
-      {month, demand / capacity_weighted_yield(year_data, month, simulated_yields)}
+      {day, demand / capacity_weighted_yield(year_data, day, simulated_yields)}
     end)
   end
 
-  defp capacity_weighted_yield(year_data, month, simulated_yields) do
-    refineries = Map.fetch!(year_data.refineries_by_month, month)
-    month_yields = Map.fetch!(simulated_yields, month)
+  defp capacity_weighted_yield(year_data, day, simulated_yields) do
+    refineries = Map.fetch!(year_data.refineries_by_day, day)
+    day_yields = Map.fetch!(simulated_yields, day)
     capacity = processing_capacity(refineries)
 
     Enum.sum(
       Enum.map(refineries, fn refinery ->
-        Map.fetch!(month_yields, refinery.id) * refinery.processing_capacity_m3
+        Map.fetch!(day_yields, refinery.id) * refinery.processing_capacity_m3
       end)
     ) / capacity
   end
@@ -146,27 +138,72 @@ defmodule GasolineSimulator.Scenarios.Runner do
   defp adjusted_demand(%Overrides{demand_adjustment_pct: pct}, demand_m3),
     do: demand_m3 * (1.0 + pct / 100.0)
 
-  defp summarize(months) do
-    demand_m3 = sum(months, :demand_m3)
-    production_m3 = sum(months, :production_m3)
-    served_demand_m3 = sum(months, :served_demand_m3)
-    petroleum = sum(months, :total_petroleum_processed_m3)
-    capacity = sum(months, :total_processing_capacity_m3)
+  defp months_from_days(days) do
+    days
+    |> Enum.group_by(&month_label(&1.month))
+    |> Enum.sort_by(fn {month, _days} -> month end)
+    |> Enum.map(fn {month, month_days} ->
+      totals = summarize(month_days)
+
+      Map.merge(totals, %{
+        status: :ok,
+        month: month,
+        refineries: aggregate_refineries(month_days)
+      })
+    end)
+  end
+
+  defp month_label(day_key), do: String.slice(day_key, 0, 7)
+
+  defp aggregate_refineries(days) do
+    days
+    |> Enum.flat_map(& &1.refineries)
+    |> Enum.group_by(& &1.id)
+    |> Enum.map(fn {_id, rows} ->
+      first = hd(rows)
+      allocated = Enum.sum(Enum.map(rows, & &1.allocated_m3))
+      petroleum = Enum.sum(Enum.map(rows, & &1.petroleum_processed_m3))
+      processing_capacity = Enum.sum(Enum.map(rows, & &1.processing_capacity_m3))
+      yield = if petroleum > 0.0, do: allocated / petroleum, else: first.simulated_yield
+
+      %{
+        id: first.id,
+        name: first.name,
+        uf: first.uf,
+        allocated_m3: allocated,
+        petroleum_processed_m3: petroleum,
+        processing_capacity_m3: processing_capacity,
+        capacity_m3: Enum.sum(Enum.map(rows, & &1.capacity_m3)),
+        floor_m3: Enum.sum(Enum.map(rows, & &1.floor_m3)),
+        simulated_yield: yield,
+        active: Enum.any?(rows, & &1.active),
+        fut_pct: petroleum / processing_capacity * 100.0
+      }
+    end)
+    |> Enum.sort_by(& &1.id)
+  end
+
+  defp summarize(periods) do
+    demand_m3 = sum(periods, :demand_m3)
+    production_m3 = sum(periods, :production_m3)
+    served_demand_m3 = sum(periods, :served_demand_m3)
+    petroleum = sum(periods, :total_petroleum_processed_m3)
+    capacity = sum(periods, :total_processing_capacity_m3)
 
     %{
       demand_m3: demand_m3,
       production_m3: production_m3,
       served_demand_m3: served_demand_m3,
-      deficit_m3: sum(months, :deficit_m3),
+      deficit_m3: sum(periods, :deficit_m3),
       total_petroleum_processed_m3: petroleum,
       total_processing_capacity_m3: capacity,
       balance_m3: production_m3 - demand_m3,
       total_fut_pct: petroleum / capacity * 100.0,
-      starting_inventory_m3: List.first(months).starting_inventory_m3,
-      ending_inventory_m3: List.last(months).ending_inventory_m3,
+      starting_inventory_m3: List.first(periods).starting_inventory_m3,
+      ending_inventory_m3: List.last(periods).ending_inventory_m3,
       coverage: served_demand_m3 / demand_m3
     }
   end
 
-  defp sum(months, field), do: Enum.sum(Enum.map(months, &Map.fetch!(&1, field)))
+  defp sum(periods, field), do: Enum.sum(Enum.map(periods, &Map.fetch!(&1, field)))
 end
