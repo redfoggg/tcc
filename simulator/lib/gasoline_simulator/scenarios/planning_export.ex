@@ -51,7 +51,7 @@ defmodule GasolineSimulator.Scenarios.PlanningExport do
       completed_at: planned.completed_at,
       provenance: %{
         total_fut_pct:
-          "Ratio of the sum of planned utilized petroleum throughput to the sum of raw petroleum processing capacity across the fixed refinery scope"
+          "Ratio of the sum of planned utilized petroleum throughput to the sum of raw petroleum processing capacity across the fixed refinery scope. Annual total is capped at 90%. Each month's petroleum cap is the leftover annual budget minus the share owed to later months, weighted by demand over that month's capacity-weighted simulated yield"
       },
       error: outcome.error,
       annual: outcome.annual,

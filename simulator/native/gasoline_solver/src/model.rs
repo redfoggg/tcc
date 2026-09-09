@@ -12,6 +12,7 @@ pub struct FacilityInput {
 pub struct SolverInput {
     pub demand: f64,
     pub initial_inventory: f64,
+    pub max_petroleum: f64,
     pub facilities: Vec<FacilityInput>,
 }
 

@@ -8,10 +8,11 @@ de arquivo e notação matemática permanecem em inglês.
 ## O que o painel faz
 
 Histórico 2025 lê `data/curated/historical_2025_summary.json` e não chama o
-solver. Planejado 2025 sorteia `R_{i,t} ~ Uniforme(0.20, 0.25)` por
-refinaria-mês e resolve janeiro a dezembro com transporte de estoque.
-Controles: estoque inicial, ajuste de demanda e piso operacional. Todas as
-13 refinarias do escopo fixo entram em todos os meses.
+solver. Planejado 2025 sorteia $R_{i,t} \sim \text{Uniforme}(0{,}20,\ \hat R_i)$
+por refinaria-mês, com teto no rendimento observado de 2025, e resolve
+janeiro a dezembro com transporte de estoque.
+Controles: estoque inicial e ajuste de demanda. Todas as 13 refinarias do
+escopo fixo entram em todos os meses.
 
 ## Documentação
 

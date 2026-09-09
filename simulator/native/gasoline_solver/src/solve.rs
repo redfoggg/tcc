@@ -43,7 +43,7 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
         production_expr.add_mul(1.0, fv.allocation);
     }
 
-    let mut common_constraints: Vec<Constraint> = Vec::with_capacity(facility_vars.len() * 2 + 1);
+    let mut common_constraints: Vec<Constraint> = Vec::with_capacity(facility_vars.len() * 2 + 2);
     for fv in &facility_vars {
         common_constraints.push(constraint!(
             fv.allocation <= fv.active * fv.facility.capacity
@@ -54,6 +54,7 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
     common_constraints.push(constraint!(
         balance_lhs == (input.demand - input.initial_inventory)
     ));
+    common_constraints.push(constraint!(throughput_objective.clone() <= input.max_petroleum));
 
     let stage_started_at = Instant::now();
 
@@ -149,16 +150,21 @@ fn map_resolution_error(error: ResolutionError, time_limit_secs: f64, stage: u8)
 }
 
 fn validate(input: &SolverInput) -> Result<(), SolverError> {
-    let valid = input
+    let valid_yields = input
         .facilities
         .iter()
         .all(|facility| facility.simulated_yield.is_finite() && facility.simulated_yield > 0.0);
+    let valid_max_petroleum = input.max_petroleum.is_finite() && input.max_petroleum >= 0.0;
 
-    if valid {
+    if valid_yields && valid_max_petroleum {
         Ok(())
-    } else {
+    } else if !valid_yields {
         Err(SolverError::InvalidInput {
             reason: "simulated yield must be finite and positive".to_string(),
+        })
+    } else {
+        Err(SolverError::InvalidInput {
+            reason: "max petroleum must be finite and non-negative".to_string(),
         })
     }
 }

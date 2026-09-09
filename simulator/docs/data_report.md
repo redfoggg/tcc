@@ -21,21 +21,21 @@ para `data/original/`. Não regenera os CSVs curados. Flags: `--force` e
 
 | Arquivo | Uso |
 |---|---|
-| `anp_2025_demand_proxy_national_monthly.csv` | `D_t^{base}` |
-| `anp_2025_refinery_capacity_monthly.csv` | `K^G`, `K^P` e piso |
+| `anp_2025_demand_proxy_national_monthly.csv` | $D_t^{\text{base}}$ |
+| `anp_2025_refinery_capacity_monthly.csv` | $K^G$ e $K^P$ |
 | `anp_2025_gasoline_a_production_by_refinery_monthly.csv` | Evidência e Histórico |
-| `anp_2025_derivative_yields_by_refinery_monthly.csv` | Calibração do intervalo de `R` |
+| `anp_2025_derivative_yields_by_refinery_monthly.csv` | Calibração do intervalo de $R$ |
 | `historical_2025_summary.json` | Painel Histórico 2025 |
 
-O planejamento não lê o CSV de rendimentos derivados. `R_{i,t}` é sorteado
-em tempo de execução.
+O planejamento não lê o CSV de rendimentos derivados. O teto $\hat R_i$
+do sorteio vem da produção de gasolina A e do processamento observado.
 
 ## Categorias
 
 - Observado: processamento, produção de gasolina A e vendas de gasolina C
-- Derivado: proxy de demanda, capacidades em m³ e piso mínimo de 2025
-- Simulado: `R_{i,t}`
-- Hipotético: estoque inicial, ajuste de demanda e piso do usuário
+- Derivado: proxy de demanda e capacidades em m³
+- Simulado: $R_{i,t}$
+- Hipotético: estoque inicial e ajuste de demanda
 
 Colunas `*_provenance` viajam com os CSVs. O `Repository` não revalida esse
 vocabulário.

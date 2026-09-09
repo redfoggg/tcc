@@ -34,23 +34,108 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
     assert Enum.all?(months, &(length(&1.refineries) == 13))
 
     assert Enum.all?(months, fn month ->
-             Enum.all?(month.refineries, &(&1.floor_m3 <= &1.capacity_m3))
+             Enum.all?(month.refineries, fn refinery ->
+               gasoline_from_petroleum =
+                 refinery.simulated_yield * refinery.processing_capacity_m3
+
+               min_petroleum = 0.40 * refinery.processing_capacity_m3
+
+               refinery.floor_m3 <= refinery.capacity_m3 + 1.0e-6 and
+                 refinery.capacity_m3 <= gasoline_from_petroleum + 1.0e-6 and
+                 refinery.allocated_m3 <= gasoline_from_petroleum + 1.0e-6 and
+                 refinery.petroleum_processed_m3 <= refinery.processing_capacity_m3 + 1.0e-6 and
+                 (not refinery.active or
+                    refinery.petroleum_processed_m3 + 1.0e-6 >= min_petroleum)
+             end)
            end)
 
+    assert Enum.all?(months, &(&1.production_m3 > 0.0))
     assert annual.total_fut_pct >= 0.0
+    assert annual.total_fut_pct <= 90.0 + 1.0e-4
 
     assert_in_delta annual.total_fut_pct,
                     annual.total_petroleum_processed_m3 / annual.total_processing_capacity_m3 *
                       100.0,
                     1.0e-6
+
+    futs = Enum.map(months, & &1.total_fut_pct)
+    assert Enum.max(futs) - Enum.min(futs) > 5.0
   end
 
-  test "every refinery-month simulated yield falls in the calibrated 0.20-0.25 range" do
+  test "each month's petroleum cap follows leftover budget minus later months' demand over simulated yield" do
+    year_data = GasolineSimulator.Data.Repository.load_year()
+    assert {:ok, %{months: months, annual: annual}} = Runner.run(%{})
+
+    oil_need_by_month =
+      Map.new(Enum.zip(1..12, months), fn {month, result} ->
+        demand = Map.fetch!(year_data.demand_by_month, month).demand_m3
+        capacity = result.total_processing_capacity_m3
+
+        mean_yield =
+          Enum.sum(Enum.map(result.refineries, &(&1.simulated_yield * &1.processing_capacity_m3))) /
+            capacity
+
+        {month, demand / mean_yield}
+      end)
+
+    annual_oil_need = oil_need_by_month |> Map.values() |> Enum.sum()
+    budget = 0.90 * annual.total_processing_capacity_m3
+
+    {pairs, _leftover} =
+      Enum.map_reduce(Enum.zip(1..12, months), budget, fn {month, result}, remaining ->
+        future_need =
+          oil_need_by_month
+          |> Enum.filter(fn {later, _need} -> later > month end)
+          |> Enum.map(fn {_later, need} -> need end)
+          |> Enum.sum()
+
+        reserved = budget * future_need / annual_oil_need
+        cap = min(result.total_processing_capacity_m3, max(remaining - reserved, 0.0))
+        leftover = max(remaining - result.total_petroleum_processed_m3, 0.0)
+        {{result, cap}, leftover}
+      end)
+
+    for {result, cap} <- pairs do
+      assert result.total_petroleum_processed_m3 <= cap + 1.0
+    end
+  end
+
+  test "monthly FUT pattern changes across independent planning runs" do
+    assert {:ok, %{months: first}} = Runner.run(%{})
+    assert {:ok, %{months: second}} = Runner.run(%{})
+
+    first_futs = Enum.map(first, & &1.total_fut_pct)
+    second_futs = Enum.map(second, & &1.total_fut_pct)
+
+    delta =
+      first_futs
+      |> Enum.zip(second_futs)
+      |> Enum.map(fn {left, right} -> abs(left - right) end)
+      |> Enum.max()
+
+    assert delta > 0.2
+  end
+
+  test "every refinery-month simulated yield stays between 0.20 and that plant's observed 2025 yield" do
+    year_data = GasolineSimulator.Data.Repository.load_year()
+
+    observed_by_id =
+      year_data.refineries_by_month
+      |> Map.values()
+      |> List.flatten()
+      |> Map.new(&{&1.id, &1.observed_yield})
+
     assert {:ok, %{months: months}} = Runner.run(%{})
 
     for month <- months, refinery <- month.refineries do
+      cap =
+        case Map.get(observed_by_id, refinery.id) do
+          yield when is_number(yield) and yield >= 0.20 and yield <= 0.40 -> yield
+          _ -> 0.20
+        end
+
       assert refinery.simulated_yield >= 0.20
-      assert refinery.simulated_yield <= 0.25
+      assert refinery.simulated_yield <= cap + 1.0e-12
     end
   end
 

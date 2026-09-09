@@ -1,7 +1,6 @@
 defmodule GasolineSimulatorWeb.DashboardLive do
   use GasolineSimulatorWeb, :live_view
 
-  alias GasolineSimulator.Data.Repository
   alias GasolineSimulator.Data.Historical
   alias GasolineSimulator.Scenarios.Orchestrator
 
@@ -16,10 +15,8 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         historical: Historical.load(),
         initial_inventory_m3: nil,
         demand_adjustment_pct: nil,
-        floor_overrides: %{},
         planned_run: nil
       )
-      |> load_setup_refineries()
 
     {:ok, socket}
   end
@@ -28,12 +25,10 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   def handle_event("run_plan", params, socket) do
     initial_inventory_m3 = params |> Map.get("initial_inventory_m3") |> parse_float_input()
     demand_adjustment_pct = params |> Map.get("demand_adjustment_pct") |> parse_float_input()
-    floor_overrides = params |> Map.get("floor_overrides", %{}) |> parse_float_map()
 
     controls = %{
       initial_inventory_m3: initial_inventory_m3,
-      demand_adjustment_pct: demand_adjustment_pct,
-      floor_overrides: floor_overrides
+      demand_adjustment_pct: demand_adjustment_pct
     }
 
     {:ok, planned_run} = Orchestrator.run_plan(controls)
@@ -42,8 +37,7 @@ defmodule GasolineSimulatorWeb.DashboardLive do
      assign(socket,
        planned_run: planned_run,
        initial_inventory_m3: initial_inventory_m3,
-       demand_adjustment_pct: demand_adjustment_pct,
-       floor_overrides: floor_overrides
+       demand_adjustment_pct: demand_adjustment_pct
      )}
   end
 
@@ -55,19 +49,6 @@ defmodule GasolineSimulatorWeb.DashboardLive do
     end
   end
 
-  defp load_setup_refineries(socket) do
-    refineries =
-      Repository.load_year()
-      |> Map.fetch!(:refineries_by_month)
-      |> Map.fetch!(1)
-      |> Enum.map(fn refinery ->
-        %{id: refinery.id, name: refinery.name, uf: refinery.uf, floor_m3: refinery.floor_m3}
-      end)
-      |> Enum.sort_by(& &1.id)
-
-    assign(socket, refineries: refineries)
-  end
-
   defp parse_float_input(nil), do: nil
   defp parse_float_input(""), do: nil
 
@@ -76,12 +57,6 @@ defmodule GasolineSimulatorWeb.DashboardLive do
       {number, _rest} -> number
       :error -> nil
     end
-  end
-
-  defp parse_float_map(params) do
-    params
-    |> Map.new(fn {id, value} -> {id, parse_float_input(value)} end)
-    |> Map.reject(fn {_id, value} -> is_nil(value) end)
   end
 
   defp fmt(value, divisor \\ 1, places \\ 1)
@@ -127,8 +102,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
           <h1 class="text-3xl font-bold tracking-tight">Painel de alocação de gasolina A</h1>
           <p class="text-base leading-6 opacity-70">
             O Histórico 2025 mostra o registro curado pré-computado. O Planejado 2025
-            sorteia um rendimento de gasolina A entre 20% e 25% para cada refinaria-mês
-            e executa uma simulação de estoque e déficit de janeiro a dezembro.
+            sorteia um rendimento de gasolina A a partir de 20%, com teto no valor
+            observado de cada refinaria em 2025, e executa uma simulação de estoque e
+            déficit de janeiro a dezembro.
           </p>
         </div>
 
@@ -169,31 +145,6 @@ defmodule GasolineSimulatorWeb.DashboardLive do
               />
             </div>
           </div>
-
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left opacity-70">
-                <th>Refinaria</th>
-                <th>Substituição do piso operacional (m³)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={refinery <- @refineries} id={"dashboard-refinery-row-#{refinery.id}"}>
-                <td>{refinery.name} ({refinery.id})</td>
-                <td>
-                  <input
-                    type="number"
-                    step="any"
-                    name={"floor_overrides[#{refinery.id}]"}
-                    id={"dashboard-floor-override-#{refinery.id}"}
-                    value={Map.get(@floor_overrides, refinery.id)}
-                    placeholder={Float.round(refinery.floor_m3, 1)}
-                    class="input input-bordered input-sm"
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
 
           <.button id="dashboard-run-plan">Executar Planejado 2025</.button>
         </form>
@@ -321,7 +272,8 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         <span :if={@planned_run} class="badge">{plan_status(@planned_run.status)}</span>
       </div>
       <p class="border-b border-base-300 px-6 py-3 text-sm opacity-70">
-        Cada execução sorteia rendimentos de gasolina A de forma independente em Uniform(0.20, 0.25).
+        Cada execução sorteia rendimentos de gasolina A de forma independente em
+        Uniform(0.20, rendimento observado da refinaria em 2025).
       </p>
       <p :if={is_nil(@planned_run)} class="px-6 py-8 text-sm opacity-60">Ainda não executado.</p>
       <div
