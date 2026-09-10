@@ -13,9 +13,9 @@ Conversões e limitações: `docs/data_transformations.md`.
 | Capacidade de refino (Anuário 2026, t2-35) | `https://www.gov.br/anp/pt-br/centrais-de-conteudo/publicacoes/anuario-estatistico/arquivos-anuario-estatistico-2026/secao-2/t2-35.xlsx` |
 
 Os quatro arquivos foram baixados uma vez e filtrados para 2025. Os brutos
-não são versionados. `data/scripts/download_anp_sources.py` só baixa de novo
-para `data/original/`. Não regenera os CSVs curados. Flags: `--force` e
-`--only`.
+de processamento e de produção por refinaria ficam em `data/original/`.
+`data/scripts/download_anp_sources.py` só baixa de novo para lá. Não
+regenera os CSVs curados. Flags: `--force` e `--only`.
 
 ## Arquivos curados
 
