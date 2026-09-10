@@ -9,16 +9,17 @@ execução do modelo. Fontes e conversões: `docs/data_report.md` e
 ## Conjuntos
 
 - $T$: os 365 dias de 2025
-- $F$: 13 refinarias de `estudo_tcc.typ` (LUBNOR, REAM, RECAP, REDUC, REFAP,
-  REFMAT, REGAP, REPAR, REPLAN, REVAP, RNEST, RPBC, RPCC)
+- $F$: 12 refinarias de `estudo_tcc.typ` (REAM, RECAP, REDUC, REFAP,
+  REFMAT, REGAP, REPAR, REPLAN, REVAP, RNEST, RPBC, RPCC). LUBNOR fica de
+  fora: é planta de lubrificantes e asfalto e não produz gasolina A.
 - Toda $i \in F$ entra em todo $d \in T$.
 
 ## Símbolos
 
 | Símbolo | Significado | Unidade |
 |---|---|---|
-| $R_{i,d}$ | Rendimento simulado de gasolina A | $[0{,}20,\ \hat R_i]$ |
-| $K^G_{i,d}$ | Capacidade teórica curada de gasolina A | m³/dia |
+| $R_{i,d}$ | Rendimento simulado de gasolina A | meses válidos de $i$ em 2025 |
+| $K^G_{i,d}$ | Coluna curada teórica. Não entra no Planejado | m³/dia |
 | $K^P_{i,d}$ | Capacidade bruta de processamento | m³ petróleo/dia |
 | $L_{i,d}$ | Piso técnico se ativa: $0{,}40\, R_{i,d} K^P_{i,d}$ | m³/dia |
 | $D_d$ | Proxy de demanda de gasolina A, já ajustado | m³ |
@@ -29,23 +30,33 @@ execução do modelo. Fontes e conversões: `docs/data_report.md` e
 | $P_d$ | Processamento implícito do dia | m³ petróleo |
 
 A demanda e as capacidades diárias são o valor mensal curado dividido pelos
-dias daquele mês. $R_{i,d}$ é sorteado uma vez por execução anual, de forma
-independente. O piso é $0{,}20$. O teto $\hat R_i$ é o rendimento observado
-da refinaria em 2025, $\sum$ gasolina A / $\sum$ petróleo processado. Se
-esse valor falta, não é positivo ou passa de $0{,}40$, o teto cai para
-$0{,}20$.
+dias daquele mês. $R_{i,d}$ é sorteado por refinaria-dia, com reposição,
+entre os rendimentos mensais válidos daquela planta em 2025. Válido: petróleo
+processado $> 0$ e A/petróleo $\le 1$. Se o valor sorteado (ou a lista) é $0$,
+usa-se a média nacional de gasolina A da ANP. Zero no histórico é decisão de
+mercado, não teto técnico.
 
 $$
-R_{i,d} \sim \text{Uniforme}(0{,}20,\ \hat R_i)
+R_{i,d} =
+\begin{cases}
+R^{\text{BR}} & \text{se o sorteio é } 0 \\
+R_{i,\text{mês}} & \text{caso contrário}
+\end{cases}
 $$
 
 A produção efetiva é
 
 $$
-C_{i,d} = \min(K^G_{i,d},\ R_{i,d} \cdot K^P_{i,d})
+C_{i,d} = \rho_{i,d}\, R_{i,d} K^P_{i,d}
 $$
 
-Se $y_{i,d} = 1$, o FUT individual não fica abaixo de 40%:
+$\rho$ começa em $1$ (fase aberta). Ao alcançar FUT $\ge 99\%$, a planta
+só desce: $99\%,\ 98\%,\ \ldots$ até $90\%$. Não sobe no meio da descida.
+Ao chegar em $90\%$, trava. O tempo da trava é o excesso do ciclo acima de
+$90\%$, $\sum \max(\mathrm{FUT}-0{,}90,\ 0)$, cobrado a $1$ p.p. por dia.
+Assim a média do ciclo fica perto de $90\%$ ou abaixo. Depois a fase
+aberta volta. A nameplate $K^P$ é o máximo físico. Se $y_{i,d} = 1$, o FUT
+não fica abaixo de 40%:
 
 $$
 L_{i,d} = \min(C_{i,d},\ 0{,}40\, R_{i,d} K^P_{i,d})
@@ -53,17 +64,15 @@ $$
 
 ## Otimização diária
 
-O ano tem orçamento $P_{\max} = 0{,}90 \cdot \sum_d \sum_i K^P_{i,d}$. O
-dia $d$ reserva para o futuro a fatia de $P_{\max}$ proporcional ao petróleo
-que a demanda restante pediria no rendimento sorteado, e pode usar o
-restante até $\sum_i K^P_{i,d}$. $P_d = \sum_i x_{i,d} / R_{i,d}$.
+Não há orçamento global de petróleo. Cada refinaria tem o próprio teto
+$\rho_{i,d} K^P_{i,d}$: sobe até 100%, desce sem retorno até 90%, depois
+trava pelo desvio da média acima de 90%.
 
-$$
-\bar R_d = \frac{\sum_i R_{i,d} K^P_{i,d}}{\sum_i K^P_{i,d}}
-$$
-
-Etapa 1: minimizar $u_d$ com $P_d$ limitado a esse teto. Etapa 2: fixar
-$u_d$ no ótimo da etapa 1 com tolerância $10^{-6}$ m³ e minimizar $P_d$.
+Etapa 1: minimizar $u_d$. Pode usar 100% de FUT para atender demanda. Etapa
+2: fixar $u_d$ no ótimo da etapa 1 com tolerância $10^{-6}$ m³ e minimizar
+$\sum_i x_{i,d} / C_{i,d}$. O FUT alto é o penalizador. Estoque final não
+entra na função objetivo. Se a demanda cabe abaixo do teto do dia, o FUT
+cai. Planta ligada fica em $[0{,}40,\ \rho_{i,d}]$.
 
 ## Restrições
 
@@ -83,7 +92,9 @@ $$
 S_{d-1} + \sum_i x_{i,d} + u_d - D_d - S_d = 0
 $$
 
-$P_d \le \min\bigl(\sum_i K^P_{i,d},\ \text{restante} - P_{\max} \frac{\sum_{s > d} D_s / \bar R_s}{\sum_s D_s / \bar R_s}\bigr)$
+$$
+P_{i,d} \le \rho_{i,d}\, K^P_{i,d}
+$$
 
 $$
 u_d \ge 0, \quad S_d \ge 0, \quad y_{i,d} \in \{0, 1\}
@@ -109,8 +120,8 @@ $$
 $$
 
 O Histórico usa o mesmo formato com processamento observado. Sempre razão de
-somas sobre as 13 refinarias, inclusive inativas. FUT individual é só
-diagnóstico.
+somas sobre as 12 refinarias. FUT individual é diagnóstico. Planta ligada
+fica em $[0{,}40,\ \rho_{i,d}]$.
 
 ## Controles
 

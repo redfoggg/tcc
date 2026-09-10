@@ -6,8 +6,6 @@ defmodule GasolineSimulator.Scenarios.Runner do
   alias GasolineSimulator.Scenarios.YieldSampling
   alias GasolineSimulator.Solver
 
-  @annual_fut_ratio 0.90
-
   @spec run(map(), keyword()) :: {:ok, map()} | {:error, term()}
   def run(params \\ %{}, opts \\ []) do
     overrides = overrides(params)
@@ -21,109 +19,125 @@ defmodule GasolineSimulator.Scenarios.Runner do
     end
   end
 
+  @ratio_step 0.01
+  @burst_hit_ratio 0.99
+
   defp run_days(overrides, year_data, simulated_yields, solver_opts) do
-    petroleum_budget = annual_petroleum_budget(year_data)
-    oil_need_by_day = oil_need_by_day(year_data, overrides, simulated_yields)
-    annual_oil_need = oil_need_by_day |> Map.values() |> Enum.sum()
-
     Repository.days()
-    |> Enum.reduce_while(
-      {[], overrides.initial_inventory_m3, petroleum_budget},
-      fn day, {acc, opening, remaining} ->
-        cap =
-          day_petroleum_cap(
-            day,
-            remaining,
-            petroleum_budget,
-            annual_oil_need,
-            oil_need_by_day,
-            year_data
-          )
+    |> Enum.reduce_while({[], overrides.initial_inventory_m3, %{}}, fn day,
+                                                                       {acc, opening, pace} ->
+      result = solve_day(day, opening, pace, overrides, year_data, simulated_yields, solver_opts)
 
-        result = solve_day(day, opening, cap, overrides, year_data, simulated_yields, solver_opts)
-
-        if result.status == :ok do
-          leftover = max(remaining - result.total_petroleum_processed_m3, 0.0)
-          {:cont, {[result | acc], result.ending_inventory_m3, leftover}}
-        else
-          {:halt, {:error, result}}
-        end
+      if result.status == :ok do
+        {:cont, {[result | acc], result.ending_inventory_m3, update_pace(pace, result)}}
+      else
+        {:halt, {:error, result}}
       end
-    )
+    end)
     |> case do
       {:error, failed} -> {:error, failed}
-      {acc, _inventory, _remaining} -> {:ok, Enum.reverse(acc)}
+      {acc, _inventory, _pace} -> {:ok, Enum.reverse(acc)}
     end
   end
 
-  defp solve_day(day, opening, max_petroleum, overrides, year_data, simulated_yields, solver_opts) do
+  defp solve_day(day, opening, pace, overrides, year_data, simulated_yields, solver_opts) do
     day_yields = Map.fetch!(simulated_yields, day)
     demand = Map.fetch!(year_data.demand_by_day, day).demand_m3
+
+    refineries =
+      Enum.map(Map.fetch!(year_data.refineries_by_day, day), fn refinery ->
+        refinery
+        |> Map.put(:simulated_yield, Map.fetch!(day_yields, refinery.id))
+        |> Map.put(:max_utilization_ratio, plant_ratio(pace, refinery.id))
+      end)
 
     {:ok, problem} =
       Problem.build(%{
         month: Repository.day_key(day),
         demand_m3: adjusted_demand(overrides, demand),
         initial_inventory_m3: opening,
-        max_petroleum_m3: max_petroleum,
-        refineries:
-          Enum.map(Map.fetch!(year_data.refineries_by_day, day), fn refinery ->
-            Map.put(refinery, :simulated_yield, Map.fetch!(day_yields, refinery.id))
-          end)
+        max_petroleum_m3: day_safe_petroleum(refineries),
+        refineries: refineries
       })
 
     Result.from_solver(problem, Solver.solve(Problem.to_solver_input(problem), solver_opts))
   end
 
-  defp annual_petroleum_budget(year_data) do
-    year_data.refineries_by_day
-    |> Map.values()
-    |> List.flatten()
-    |> processing_capacity()
-    |> Kernel.*(@annual_fut_ratio)
+  defp plant_ratio(pace, id) do
+    case pace do
+      %{^id => %{ratio: ratio}} -> ratio
+      _ -> Problem.burst_utilization_ratio()
+    end
   end
 
-  defp day_petroleum_cap(
-         day,
-         remaining,
-         petroleum_budget,
-         annual_oil_need,
-         oil_need_by_day,
-         year_data
-       ) do
-    day_capacity = processing_capacity(Map.fetch!(year_data.refineries_by_day, day))
-
-    future_need =
-      oil_need_by_day
-      |> Enum.filter(fn {later, _need} -> Date.compare(later, day) == :gt end)
-      |> Enum.map(fn {_later, need} -> need end)
-      |> Enum.sum()
-
-    reserved = petroleum_budget * future_need / annual_oil_need
-    min(day_capacity, max(remaining - reserved, 0.0))
+  defp initial_pace do
+    %{
+      phase: :open,
+      ratio: Problem.burst_utilization_ratio(),
+      surplus: 0.0,
+      lock_left: 0
+    }
   end
 
-  defp oil_need_by_day(year_data, overrides, simulated_yields) do
-    Map.new(year_data.demand_by_day, fn {day, entry} ->
-      demand = adjusted_demand(overrides, entry.demand_m3)
-      {day, demand / capacity_weighted_yield(year_data, day, simulated_yields)}
+  defp update_pace(pace, result) do
+    Enum.reduce(result.refineries, pace, fn refinery, acc ->
+      previous = Map.get(acc, refinery.id, initial_pace())
+      Map.put(acc, refinery.id, next_pace(previous, refinery))
     end)
   end
 
-  defp capacity_weighted_yield(year_data, day, simulated_yields) do
-    refineries = Map.fetch!(year_data.refineries_by_day, day)
-    day_yields = Map.fetch!(simulated_yields, day)
-    capacity = processing_capacity(refineries)
-
-    Enum.sum(
-      Enum.map(refineries, fn refinery ->
-        Map.fetch!(day_yields, refinery.id) * refinery.processing_capacity_m3
-      end)
-    ) / capacity
+  defp next_pace(%{phase: phase} = state, refinery) when phase in [:open, :falling] do
+    fut = fut_ratio(refinery)
+    surplus = state.surplus + max(fut - Problem.sustainable_utilization_ratio(), 0.0)
+    advance_phase(%{state | surplus: surplus}, fut)
   end
 
-  defp processing_capacity(refineries),
-    do: Enum.sum(Enum.map(refineries, & &1.processing_capacity_m3))
+  defp next_pace(%{phase: :locked, lock_left: left} = state, _refinery) do
+    left = left - 1
+
+    if left <= 0 do
+      initial_pace()
+    else
+      %{state | lock_left: left}
+    end
+  end
+
+  defp advance_phase(%{phase: :open, ratio: ratio} = state, fut) do
+    if fut + 1.0e-6 >= @burst_hit_ratio * Problem.burst_utilization_ratio() do
+      %{state | phase: :falling, ratio: ratio - @ratio_step}
+    else
+      state
+    end
+  end
+
+  defp advance_phase(%{phase: :falling, ratio: ratio, surplus: surplus} = state, _fut) do
+    next_ratio = ratio - @ratio_step
+    floor = Problem.sustainable_utilization_ratio()
+
+    if next_ratio <= floor + 1.0e-12 do
+      %{state | phase: :locked, ratio: floor, lock_left: lock_days(surplus)}
+    else
+      %{state | ratio: next_ratio}
+    end
+  end
+
+  defp fut_ratio(%{processing_capacity_m3: kp}) when kp <= 0.0, do: 0.0
+  defp fut_ratio(refinery), do: refinery.petroleum_processed_m3 / refinery.processing_capacity_m3
+
+  defp lock_days(surplus) do
+    surplus
+    |> Kernel./(@ratio_step)
+    |> Float.ceil()
+    |> trunc()
+    |> max(1)
+  end
+
+  defp day_safe_petroleum(refineries) do
+    Enum.reduce(refineries, 0.0, fn refinery, acc ->
+      ratio = Map.get(refinery, :max_utilization_ratio, Problem.burst_utilization_ratio())
+      acc + ratio * refinery.processing_capacity_m3
+    end)
+  end
 
   defp overrides(params) do
     values =

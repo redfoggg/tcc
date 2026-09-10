@@ -11,8 +11,7 @@ defmodule GasolineSimulator.Data.Catalog do
     "RECAP" => {"Refinaria de Capuava", "SP"},
     "REAM" => {"Refinaria de Manaus", "AM"},
     "RPCC" => {"Refinaria Clara Camarão", "RN"},
-    "RNEST" => {"Refinaria Abreu e Lima", "PE"},
-    "LUBNOR" => {"Lubrificantes e Derivados de Petróleo do Nordeste", "CE"}
+    "RNEST" => {"Refinaria Abreu e Lima", "PE"}
   }
 
   @spec find(String.t()) :: map() | nil

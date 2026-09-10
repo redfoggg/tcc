@@ -22,14 +22,14 @@ para `data/original/`. Não regenera os CSVs curados. Flags: `--force` e
 | Arquivo | Uso |
 |---|---|
 | `anp_2025_demand_proxy_national_monthly.csv` | $D_t^{\text{base}}$ |
-| `anp_2025_refinery_capacity_monthly.csv` | $K^G$ e $K^P$ |
+| `anp_2025_refinery_capacity_monthly.csv` | $K^P$ no Planejado. $K^G$ curada não é lida como teto |
 | `anp_2025_gasoline_a_production_by_refinery_monthly.csv` | Evidência e Histórico |
 | `anp_2025_derivative_yields_by_refinery_monthly.csv` | Calibração do intervalo de $R$ |
 | `historical_2025_summary.json` | Painel Histórico 2025 |
 
-O planejamento não lê o CSV de rendimentos derivados. O teto $\hat R_i$
-do sorteio diário vem da produção de gasolina A e do processamento
-observado.
+O planejamento não lê o CSV de rendimentos derivados. O sorteio diário
+usa os rendimentos mensais válidos de cada refinaria, da produção de
+gasolina A e do processamento observado.
 
 ## Categorias
 
@@ -42,6 +42,12 @@ Colunas `*_provenance` viajam com os CSVs. O `Repository` não revalida esse
 vocabulário.
 
 ## Fora de escopo
+
+LUBNOR não entra no catálogo nem nos CSVs curados do modelo. É refinaria
+de lubrificantes e asfalto. Em 2025 a ANP registra 0 m³ de gasolina A.
+O Histórico e o Planejado usam as outras 12 plantas do catálogo. Os
+brutos da ANP em `data/original/` ainda listam a planta. O
+`Repository` também ignora qualquer código fora do catálogo.
 
 `logistics_data.csv` e `logistics_data_only_gasoline_2025.csv` são preço
 médio de distribuição. Nenhum código os lê. Vendas regionais e totais

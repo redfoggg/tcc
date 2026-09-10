@@ -102,9 +102,10 @@ defmodule GasolineSimulatorWeb.DashboardLive do
           <h1 class="text-3xl font-bold tracking-tight">Painel de alocação de gasolina A</h1>
           <p class="text-base leading-6 opacity-70">
             O Histórico 2025 mostra o registro curado pré-computado. O Planejado 2025
-            sorteia um rendimento de gasolina A a partir de 20%, com teto no valor
-            observado de cada refinaria em 2025, e executa uma simulação de estoque e
-            déficit de janeiro a dezembro.
+            sorteia o rendimento de gasolina A entre os meses válidos daquela
+            refinaria em 2025. Se o valor seria 0, usa a média nacional. Em seguida
+            executa uma simulação de estoque e déficit de janeiro a dezembro. O
+            escopo tem 12 refinarias. LUBNOR fica de fora: não produz gasolina A.
           </p>
         </div>
 
@@ -167,7 +168,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
       <div class="space-y-2 border-b border-base-300 px-6 py-5">
         <h2 class="text-xl font-semibold">Histórico 2025</h2>
         <p class="text-sm leading-5 opacity-70">
-          Artefato curado estático. O FUT Total usa o processamento de petróleo observado e a capacidade bruta.
+          Artefato curado estático das 12 refinarias do catálogo. LUBNOR
+          não entra: não produz gasolina A. O FUT Total usa o processamento
+          de petróleo observado e a capacidade bruta.
         </p>
       </div>
       <div class="grid gap-x-10 gap-y-4 border-b border-base-300 px-6 py-6 sm:grid-cols-2">
@@ -262,9 +265,11 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         <span :if={@planned_run} class="badge">{plan_status(@planned_run.status)}</span>
       </div>
       <p class="border-b border-base-300 px-6 py-3 text-sm opacity-70">
-        O solver decide cada dia de 2025. O painel agrega esses dias em mês e
-        ano. Cada execução sorteia rendimentos diários em Uniform(0.20,
-        rendimento observado da refinaria em 2025).
+        O solver decide cada dia de 2025. Cada refinaria pode ir a 100% de
+        FUT. Depois do pico o teto só desce até 90% e trava o tempo do
+        excesso acima de 90%. O painel agrega esses dias em mês e ano. Cada
+        execução sorteia o rendimento diário entre os meses válidos daquela
+        refinaria em 2025. Valor 0 sobe para a média nacional.
       </p>
       <p :if={is_nil(@planned_run)} class="px-6 py-8 text-sm opacity-60">Ainda não executado.</p>
       <div

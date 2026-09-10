@@ -52,25 +52,6 @@ fn solves_normal_allocation() {
 }
 
 #[test]
-fn carries_surplus_as_inventory() {
-    let output = solve(
-        &input(
-            10.0,
-            0.0,
-            vec![
-                facility("cheap", 1_000_000.0, 50.0, 30.0),
-                facility("costly", 1.0, 100.0, 0.0),
-            ],
-        ),
-        LIMIT,
-    )
-    .unwrap();
-
-    assert!((output.production - 30.0).abs() < EPS);
-    assert!((output.ending_inventory - 20.0).abs() < EPS);
-}
-
-#[test]
 fn reports_deficit_when_capacity_is_insufficient() {
     let output = solve(
         &input(500.0, 0.0, vec![facility("T1", 10.0, 100.0, 0.0)]),
@@ -95,35 +76,16 @@ fn respects_operating_floor() {
 }
 
 #[test]
-fn minimizes_petroleum_throughput_after_pinning_minimal_deficit() {
+fn lowers_utilization_when_demand_is_below_the_safe_cap() {
     let output = solve(
-        &input(
-            50.0,
-            0.0,
-            vec![
-                facility("efficient", 1.0, 100.0, 0.0),
-                facility("inefficient", 0.1, 100.0, 0.0),
-            ],
-        ),
+        &input(40.0, 0.0, vec![facility("T1", 0.2, 200.0, 0.0)]),
         LIMIT,
     )
     .unwrap();
 
     assert!(output.deficit.abs() < EPS);
-
-    let efficient = output
-        .facilities
-        .iter()
-        .find(|f| f.id == "efficient")
-        .unwrap();
-    let inefficient = output
-        .facilities
-        .iter()
-        .find(|f| f.id == "inefficient")
-        .unwrap();
-
-    assert!((efficient.allocated - 50.0).abs() < EPS);
-    assert!(inefficient.allocated.abs() < EPS);
+    assert!((output.production - 40.0).abs() < EPS);
+    assert!(output.ending_inventory.abs() < EPS);
 }
 
 #[test]

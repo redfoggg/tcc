@@ -5,7 +5,6 @@ defmodule GasolineSimulator.Data.Repository do
   @refinery_capacity_file "anp_2025_refinery_capacity_monthly.csv"
   @demand_proxy_file "anp_2025_demand_proxy_national_monthly.csv"
   @production_file "anp_2025_gasoline_a_production_by_refinery_monthly.csv"
-  @max_plausible_observed_yield 0.40
 
   @spec days() :: [Date.t()]
   def days, do: Date.range(Date.new!(@year, 1, 1), Date.new!(@year, 12, 31)) |> Enum.to_list()
@@ -49,14 +48,16 @@ defmodule GasolineSimulator.Data.Repository do
   end
 
   defp refineries_by_month(curated_dir) do
-    observed_yields = observed_yields_by_id(curated_dir)
+    monthly_yields = monthly_yields_by_id(curated_dir)
+    national_average = national_average_yield(curated_dir)
 
     curated_dir
     |> Path.join(@refinery_capacity_file)
     |> read_csv_rows()
+    |> Enum.filter(&in_catalog?/1)
     |> Enum.group_by(&month_index(&1["month"]))
     |> Map.new(fn {month, rows} ->
-      {month, Enum.map(rows, &to_refinery_attrs(&1, observed_yields))}
+      {month, Enum.map(rows, &to_refinery_attrs(&1, monthly_yields, national_average))}
     end)
   end
 
@@ -81,7 +82,7 @@ defmodule GasolineSimulator.Data.Repository do
     end)
   end
 
-  defp to_refinery_attrs(capacity_row, observed_yields) do
+  defp to_refinery_attrs(capacity_row, monthly_yields, national_average) do
     catalog_entry = Catalog.find(capacity_row["refinery_code"])
 
     %{
@@ -90,41 +91,62 @@ defmodule GasolineSimulator.Data.Repository do
       uf: catalog_entry.uf,
       capacity_m3: parse_float(capacity_row["capacity_gasoline_a_m3_month"]),
       processing_capacity_m3: parse_float(capacity_row["capacity_m3_month"]),
-      observed_yield: Map.get(observed_yields, capacity_row["refinery_code"])
+      observed_monthly_yields: Map.get(monthly_yields, capacity_row["refinery_code"], []),
+      national_average_yield: national_average
     }
   end
 
-  defp observed_yields_by_id(curated_dir) do
-    throughput_by_id =
-      sum_by_refinery(curated_dir, @refinery_capacity_file, "utilized_throughput_m3")
+  defp national_average_yield(curated_dir) do
+    values =
+      curated_dir
+      |> Path.join(@refinery_capacity_file)
+      |> read_csv_rows()
+      |> Enum.uniq_by(& &1["month"])
+      |> Enum.map(&parse_float(&1["national_avg_gasoline_a_yield_used"]))
 
-    production_by_id = sum_by_refinery(curated_dir, @production_file, "gasolina_a_m3")
+    Enum.sum(values) / length(values)
+  end
 
-    Map.new(throughput_by_id, fn {id, throughput} ->
-      production = Map.get(production_by_id, id, 0.0)
-      {id, observed_yield(production, throughput)}
+  defp monthly_yields_by_id(curated_dir) do
+    production_by_key =
+      values_by_refinery_month(curated_dir, @production_file, "gasolina_a_m3")
+
+    curated_dir
+    |> Path.join(@refinery_capacity_file)
+    |> read_csv_rows()
+    |> Enum.filter(&in_catalog?/1)
+    |> Enum.group_by(& &1["refinery_code"])
+    |> Map.new(fn {id, rows} ->
+      yields =
+        Enum.flat_map(rows, fn row ->
+          throughput = parse_float(row["utilized_throughput_m3"])
+          production = Map.get(production_by_key, {id, row["month"]}, 0.0)
+
+          if usable_for_yield?(production, throughput) do
+            [production / throughput]
+          else
+            []
+          end
+        end)
+
+      {id, yields}
     end)
   end
 
-  defp sum_by_refinery(curated_dir, file, column) do
+  defp values_by_refinery_month(curated_dir, file, column) do
     curated_dir
     |> Path.join(file)
     |> read_csv_rows()
-    |> Enum.group_by(& &1["refinery_code"])
-    |> Map.new(fn {id, rows} ->
-      {id, Enum.sum(Enum.map(rows, &parse_float(&1[column])))}
+    |> Map.new(fn row ->
+      {{row["refinery_code"], row["month"]}, parse_float(row[column])}
     end)
   end
 
-  defp observed_yield(_production, throughput) when throughput <= 0.0, do: nil
+  defp in_catalog?(row), do: Catalog.find(row["refinery_code"]) != nil
 
-  defp observed_yield(production, throughput) do
-    yield = production / throughput
+  defp usable_for_yield?(_production, throughput) when throughput <= 0.0, do: false
 
-    if yield > 0.0 and yield <= @max_plausible_observed_yield do
-      yield
-    end
-  end
+  defp usable_for_yield?(production, throughput), do: production / throughput <= 1.0
 
   defp month_index(month_key),
     do: month_key |> String.split("-") |> List.last() |> String.to_integer()

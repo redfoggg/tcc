@@ -36,20 +36,19 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
     assert_in_delta annual.demand_m3, Enum.sum(Enum.map(days, & &1.demand_m3)), 1.0e-3
     assert_in_delta annual.demand_m3, Enum.sum(Enum.map(months, & &1.demand_m3)), 1.0e-3
 
-    assert Enum.all?(days, &(length(&1.refineries) == 13))
-    assert Enum.all?(months, &(length(&1.refineries) == 13))
+    assert Enum.all?(days, &(length(&1.refineries) == 12))
+    assert Enum.all?(months, &(length(&1.refineries) == 12))
 
     assert Enum.all?(days, fn day ->
              Enum.all?(day.refineries, fn refinery ->
-               gasoline_from_petroleum =
-                 refinery.simulated_yield * refinery.processing_capacity_m3
-
+               max_petroleum = refinery.processing_capacity_m3
+               gasoline_from_petroleum = refinery.simulated_yield * max_petroleum
                min_petroleum = 0.40 * refinery.processing_capacity_m3
 
                refinery.floor_m3 <= refinery.capacity_m3 + 1.0e-6 and
                  refinery.capacity_m3 <= gasoline_from_petroleum + 1.0e-6 and
                  refinery.allocated_m3 <= gasoline_from_petroleum + 1.0e-6 and
-                 refinery.petroleum_processed_m3 <= refinery.processing_capacity_m3 + 1.0e-6 and
+                 refinery.petroleum_processed_m3 <= max_petroleum + 1.0e-6 and
                  (not refinery.active or
                     refinery.petroleum_processed_m3 + 1.0e-6 >= min_petroleum)
              end)
@@ -57,91 +56,136 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
 
     assert Enum.all?(days, &(&1.production_m3 > 0.0))
     assert annual.total_fut_pct >= 0.0
-    assert annual.total_fut_pct <= 90.0 + 1.0e-4
+    assert annual.total_fut_pct <= 100.0 + 1.0e-4
 
     assert_in_delta annual.total_fut_pct,
                     annual.total_petroleum_processed_m3 / annual.total_processing_capacity_m3 *
                       100.0,
                     1.0e-6
 
-    futs = Enum.map(months, & &1.total_fut_pct)
-    assert Enum.max(futs) - Enum.min(futs) > 5.0
+    assert Enum.any?(days, fn day ->
+             Enum.any?(day.refineries, fn refinery ->
+               refinery.petroleum_processed_m3 >
+                 GasolineSimulator.Models.Problem.sustainable_utilization_ratio() *
+                   refinery.processing_capacity_m3 + 1.0
+             end)
+           end)
+
+    deficit_days = Enum.filter(days, &(&1.deficit_m3 > 1.0))
+
+    assert deficit_days != []
+
+    assert Enum.all?(deficit_days, fn day ->
+             Enum.all?(day.refineries, fn refinery ->
+               refinery.capacity_m3 <= 1.0e-9 or
+                 (refinery.active and refinery.allocated_m3 + 1.0e-3 >= refinery.capacity_m3)
+             end)
+           end)
   end
 
-  test "each day's petroleum cap follows leftover budget minus later days' demand over simulated yield" do
-    year_data = Repository.load_year()
-    assert {:ok, %{days: days, annual: annual}} = Runner.run(%{})
+  test "after hitting 100% FUT the cap only falls and then locks from surplus above 90%" do
+    assert {:ok, %{days: days}} = Runner.run(%{})
+    burst = GasolineSimulator.Models.Problem.burst_utilization_ratio()
+    sustainable = GasolineSimulator.Models.Problem.sustainable_utilization_ratio()
 
-    oil_need_by_day =
-      Map.new(Enum.zip(Repository.days(), days), fn {day, result} ->
-        demand = Map.fetch!(year_data.demand_by_day, day).demand_m3
-        capacity = result.total_processing_capacity_m3
+    days
+    |> hd()
+    |> Map.fetch!(:refineries)
+    |> Enum.map(& &1.id)
+    |> Enum.each(fn id ->
+      initial = %{phase: :open, ratio: burst, surplus: 0.0, lock_left: 0}
 
-        mean_yield =
-          Enum.sum(Enum.map(result.refineries, &(&1.simulated_yield * &1.processing_capacity_m3))) /
-            capacity
+      Enum.reduce(days, initial, fn day, state ->
+        refinery = Enum.find(day.refineries, &(&1.id == id))
+        cap = state.ratio * refinery.processing_capacity_m3
+        assert refinery.petroleum_processed_m3 <= cap + 1.0e-6
 
-        {day, demand / mean_yield}
+        fut =
+          if refinery.processing_capacity_m3 > 0.0 do
+            refinery.petroleum_processed_m3 / refinery.processing_capacity_m3
+          else
+            0.0
+          end
+
+        next_state(state, fut, burst, sustainable)
       end)
+    end)
+  end
 
-    annual_oil_need = oil_need_by_day |> Map.values() |> Enum.sum()
-    budget = 0.90 * annual.total_processing_capacity_m3
+  defp next_state(%{phase: phase} = state, fut, burst, sustainable)
+       when phase in [:open, :falling] do
+    surplus = state.surplus + max(fut - sustainable, 0.0)
+    advance_test_phase(%{state | surplus: surplus}, fut, burst, sustainable)
+  end
 
-    {pairs, _leftover} =
-      Enum.map_reduce(Enum.zip(Repository.days(), days), budget, fn {day, result}, remaining ->
-        future_need =
-          oil_need_by_day
-          |> Enum.filter(fn {later, _need} -> Date.compare(later, day) == :gt end)
-          |> Enum.map(fn {_later, need} -> need end)
-          |> Enum.sum()
+  defp next_state(%{phase: :locked, lock_left: left} = state, _fut, burst, _sustainable) do
+    left = left - 1
 
-        reserved = budget * future_need / annual_oil_need
-        cap = min(result.total_processing_capacity_m3, max(remaining - reserved, 0.0))
-        leftover = max(remaining - result.total_petroleum_processed_m3, 0.0)
-        {{result, cap}, leftover}
-      end)
-
-    for {result, cap} <- pairs do
-      assert result.total_petroleum_processed_m3 <= cap + 1.0
+    if left <= 0 do
+      %{phase: :open, ratio: burst, surplus: 0.0, lock_left: 0}
+    else
+      %{state | lock_left: left}
     end
   end
 
-  test "monthly FUT pattern changes across independent planning runs" do
+  defp advance_test_phase(%{phase: :open, ratio: ratio} = state, fut, burst, _sustainable) do
+    if fut + 1.0e-6 >= 0.99 * burst do
+      %{state | phase: :falling, ratio: ratio - 0.01}
+    else
+      state
+    end
+  end
+
+  defp advance_test_phase(
+         %{phase: :falling, ratio: ratio, surplus: surplus} = state,
+         _fut,
+         _burst,
+         sustainable
+       ) do
+    next_ratio = ratio - 0.01
+
+    if next_ratio <= sustainable + 1.0e-12 do
+      lock_left = surplus |> Kernel./(0.01) |> Float.ceil() |> trunc() |> max(1)
+      %{state | phase: :locked, ratio: sustainable, lock_left: lock_left}
+    else
+      %{state | ratio: next_ratio}
+    end
+  end
+
+  test "monthly served demand changes across independent planning runs" do
     assert {:ok, %{months: first}} = Runner.run(%{})
     assert {:ok, %{months: second}} = Runner.run(%{})
 
-    first_futs = Enum.map(first, & &1.total_fut_pct)
-    second_futs = Enum.map(second, & &1.total_fut_pct)
+    first_served = Enum.map(first, & &1.served_demand_m3)
+    second_served = Enum.map(second, & &1.served_demand_m3)
 
     delta =
-      first_futs
-      |> Enum.zip(second_futs)
+      first_served
+      |> Enum.zip(second_served)
       |> Enum.map(fn {left, right} -> abs(left - right) end)
       |> Enum.max()
 
-    assert delta > 0.2
+    assert delta > 1_000.0
   end
 
-  test "every refinery-day simulated yield stays between 0.20 and that plant's observed 2025 yield" do
+  test "every refinery-day simulated yield is one of that plant's 2025 monthly yields" do
     year_data = Repository.load_year()
 
-    observed_by_id =
+    plants =
       year_data.refineries_by_day
       |> Map.values()
       |> List.flatten()
-      |> Map.new(&{&1.id, &1.observed_yield})
+      |> Map.new(&{&1.id, &1})
 
     assert {:ok, %{days: days}} = Runner.run(%{})
 
     for day <- days, refinery <- day.refineries do
-      cap =
-        case Map.get(observed_by_id, refinery.id) do
-          yield when is_number(yield) and yield >= 0.20 and yield <= 0.40 -> yield
-          _ -> 0.20
-        end
+      plant = Map.fetch!(plants, refinery.id)
+      allowed = plant.observed_monthly_yields ++ [plant.national_average_yield]
 
-      assert refinery.simulated_yield >= 0.20
-      assert refinery.simulated_yield <= cap + 1.0e-12
+      assert Enum.any?(allowed, fn yield ->
+               abs(yield - refinery.simulated_yield) <= 1.0e-9
+             end)
     end
   end
 
@@ -149,9 +193,14 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
     assert {:ok, %{days: days}} = Runner.run(%{})
 
     for day <- days, refinery <- day.refineries do
-      assert_in_delta refinery.petroleum_processed_m3,
-                      refinery.allocated_m3 / refinery.simulated_yield,
-                      1.0e-6
+      if refinery.simulated_yield <= 0.0 do
+        assert_in_delta refinery.allocated_m3, 0.0, 1.0e-9
+        assert_in_delta refinery.petroleum_processed_m3, 0.0, 1.0e-9
+      else
+        assert_in_delta refinery.petroleum_processed_m3,
+                        refinery.allocated_m3 / refinery.simulated_yield,
+                        1.0e-6
+      end
     end
   end
 end

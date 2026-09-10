@@ -1,7 +1,4 @@
 defmodule GasolineSimulator.Scenarios.YieldSampling do
-  @base_yield 0.20
-  @max_plausible_observed_yield 0.40
-
   @spec draw(%{(1..12) => [map()]}) :: %{(1..12) => %{String.t() => float()}}
   def draw(refineries_by_period) do
     Map.new(refineries_by_period, fn {period, refineries} ->
@@ -10,18 +7,15 @@ defmodule GasolineSimulator.Scenarios.YieldSampling do
   end
 
   defp sample(refinery) do
-    cap = yield_cap(refinery)
-    @base_yield + :rand.uniform() * (cap - @base_yield)
-  end
+    yields = Map.get(refinery, :observed_monthly_yields, [])
+    national_average = Map.get(refinery, :national_average_yield, 0.0)
 
-  defp yield_cap(refinery) do
-    observed = Map.get(refinery, :observed_yield)
+    drawn =
+      case yields do
+        [] -> 0.0
+        _ -> Enum.random(yields)
+      end
 
-    cond do
-      not is_number(observed) -> @base_yield
-      observed < @base_yield -> @base_yield
-      observed > @max_plausible_observed_yield -> @base_yield
-      true -> observed
-    end
+    if drawn > 0.0, do: drawn, else: national_average
   end
 end

@@ -27,24 +27,29 @@ $$
 K^G_{i,t} = K^P_{i,t} \times \text{rendimento\_médio\_nacional}
 $$
 
-`0.158987` é o fator ANP de barril para m³. $K^G$ é teórico
-(`derived_theoretical_not_observed`). A coluna de piso observado do CSV
-não entra no Planejado.
+`0.158987` é o fator ANP de barril para m³. $K^G$ no CSV é teórico
+(`derived_theoretical_not_observed`): $K^P$ vezes o rendimento médio
+nacional do mês. Essa coluna não entra no Planejado. O teto de gasolina A
+é $\rho R K^P$ de cada refinaria. A coluna de piso observado do CSV
+também não entra.
 
 ## Rendimento simulado
 
-O teto por refinaria $\hat R_i$ usa produção e processamento observados
-de 2025 (razão de somas no ano). Valores fora de $(0,\ 0{,}40]$ viram
-piso $0{,}20$.
+O sorteio de $R_{i,d}$ usa os rendimentos mensais da própria refinaria em
+2025. A produção publicada não é alterada. Meses sem petróleo processado,
+ou com A/petróleo $> 1$, ficam de fora da lista. O dia sorteia um desses
+valores, com reposição. Sorteio $0$ (ou lista vazia) vira a média nacional
+ANP do ano, a mesma coluna `national_avg_gasoline_a_yield_used`. Zero
+histórico é mercado, não restrição de processo.
 
 $$
-R_{i,d} \sim \text{Uniforme}(0{,}20,\ \hat R_i)
+R_{i,d} \in \{R_{i,\text{mês}}: \text{mês válido de } i\}
 $$
 
 A demanda e as capacidades diárias são o valor mensal dividido pelos dias
 do mês.
 
-A razão nacional 2025 no escopo das 13 refinarias é `0,250164`. O CSV de
+A razão nacional 2025 no escopo das 12 refinarias é `0,251151`. O CSV de
 rendimentos derivados só documenta a variação histórica mensal por
 produto. Não entra no sorteio.
 
@@ -57,19 +62,25 @@ $$
 \text{FUT} = 100 \times \frac{\sum \text{processamento\_obs}}{\sum K^P}
 $$
 
-mensal e anual, sobre as 13 refinarias. REPAR em 2025-02 fica com FUT
+mensal e anual, sobre as 12 refinarias. REPAR em 2025-02 fica com FUT
 individual 100,2535% (954.411 m³ processados contra 951.998,117 m³ de
 capacidade convertida).
 
 ## Escopo
 
 Catálogo em `lib/gasoline_simulator/data/catalog.ex`: RNEST, REFMAT, RECAP,
-REDUC, REFAP, REGAP, REPAR, RPBC, REPLAN, REVAP, LUBNOR, REAM e RPCC.
-Clara Camarão usa `RPCC`, não o rótulo `RECAP` de `estudo_tcc.typ`. Fora do
-modelo: DAX OIL, MANGUINHOS, PARANÁ XISTO, RIOGRANDENSE, SSOIL e UNIVEN.
+REDUC, REFAP, REGAP, REPAR, RPBC, REPLAN, REVAP, REAM e RPCC.
+Clara Camarão usa `RPCC`, não o rótulo `RECAP` de `estudo_tcc.typ`.
+
+LUBNOR (Fortaleza) fica de fora do Histórico e do Planejado. É a refinaria
+de lubrificantes e derivados do Nordeste. A ANP não registra gasolina A
+lá em 2025. O parque é de lubrificantes, parafina e asfalto, não de
+gasolina. Incluí-la só somaria petróleo no FUT sem A possível.
+
+Fora do modelo: LUBNOR, DAX OIL, MANGUINHOS, PARANÁ XISTO, RIOGRANDENSE,
+SSOIL e UNIVEN.
 
 ## Limitações
 
-- $K^G$ usa média nacional
 - Um único instantâneo de capacidade cobre o ano inteiro
 - $R_{i,d}$ não é rendimento de engenharia por refinaria

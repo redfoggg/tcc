@@ -89,7 +89,10 @@ defmodule GasolineSimulator.Models.Result do
       ])
       |> Map.merge(Map.take(facility, [:active]))
       |> Map.put(:allocated_m3, facility.allocated)
-      |> Map.put(:petroleum_processed_m3, facility.allocated / refinery.simulated_yield)
+      |> Map.put(
+        :petroleum_processed_m3,
+        petroleum_processed(facility.allocated, refinery.simulated_yield)
+      )
       |> then(fn refinery_result ->
         Map.put(
           refinery_result,
@@ -99,6 +102,9 @@ defmodule GasolineSimulator.Models.Result do
       end)
     end)
   end
+
+  defp petroleum_processed(_allocated, yield) when yield <= 0.0, do: 0.0
+  defp petroleum_processed(allocated, yield), do: allocated / yield
 
   defp total_fut_pct(_processed, capacity) when capacity <= 0.0, do: 0.0
   defp total_fut_pct(processed, capacity), do: processed / capacity * 100.0

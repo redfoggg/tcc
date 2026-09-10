@@ -8,11 +8,12 @@ de arquivo e notação matemática permanecem em inglês.
 ## O que o painel faz
 
 Histórico 2025 lê `data/curated/historical_2025_summary.json` e não chama o
-solver. Planejado 2025 sorteia $R_{i,d} \sim \text{Uniforme}(0{,}20,\ \hat R_i)$
-por refinaria-dia, resolve os 365 dias de 2025 com transporte de estoque e
+solver. Planejado 2025 sorteia $R_{i,d}$ nos rendimentos mensais válidos
+daquela refinaria em 2025, resolve os 365 dias com transporte de estoque e
 mostra no painel o agregado mensal e anual.
-Controles: estoque inicial e ajuste de demanda. Todas as 13 refinarias do
-escopo fixo entram em todos os meses.
+Controles: estoque inicial e ajuste de demanda. As 12 refinarias do
+escopo fixo entram em todos os meses. LUBNOR não entra: não produz
+gasolina A.
 
 ## Documentação
 

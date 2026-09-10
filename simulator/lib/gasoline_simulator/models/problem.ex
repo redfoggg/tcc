@@ -43,11 +43,21 @@ defmodule GasolineSimulator.Models.Problem do
     }
   end
 
+  @burst_utilization_ratio 1.0
+  @sustainable_utilization_ratio 0.90
   @min_utilization_ratio 0.40
 
+  def burst_utilization_ratio, do: @burst_utilization_ratio
+  def sustainable_utilization_ratio, do: @sustainable_utilization_ratio
+  def max_utilization_ratio, do: @burst_utilization_ratio
+
   defp apply_petroleum_limit(refinery) do
-    gasoline_from_petroleum = refinery.simulated_yield * refinery.processing_capacity_m3
-    Map.update!(refinery, :capacity_m3, &min(&1, gasoline_from_petroleum))
+    ratio = Map.get(refinery, :max_utilization_ratio, @burst_utilization_ratio)
+
+    gasoline_from_petroleum =
+      refinery.simulated_yield * ratio * refinery.processing_capacity_m3
+
+    Map.put(refinery, :capacity_m3, gasoline_from_petroleum)
   end
 
   defp apply_min_utilization(refinery) do
@@ -61,9 +71,11 @@ defmodule GasolineSimulator.Models.Problem do
     do: Map.update!(refinery, :floor_m3, &min(&1, refinery.capacity_m3))
 
   defp to_facility(%Refinery{} = refinery) do
+    yield = refinery.simulated_yield
+
     %{
       id: refinery.id,
-      simulated_yield: refinery.simulated_yield,
+      simulated_yield: if(yield > 0.0, do: yield, else: 1.0),
       capacity: refinery.capacity_m3,
       floor: refinery.floor_m3
     }

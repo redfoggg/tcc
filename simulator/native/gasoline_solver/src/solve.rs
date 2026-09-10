@@ -35,11 +35,15 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
     let deficit = vars.add(variable().min(0.0));
     let ending_inventory = vars.add(variable().min(0.0));
 
-    let mut throughput_objective = Expression::with_capacity(facility_vars.len());
+    let mut throughput_expr = Expression::with_capacity(facility_vars.len());
     let mut production_expr = Expression::with_capacity(facility_vars.len());
+    let mut utilization_penalty = Expression::with_capacity(facility_vars.len());
     for fv in &facility_vars {
-        throughput_objective.add_mul(1.0 / fv.facility.simulated_yield, fv.allocation);
+        throughput_expr.add_mul(1.0 / fv.facility.simulated_yield, fv.allocation);
         production_expr.add_mul(1.0, fv.allocation);
+        if fv.facility.capacity > 0.0 {
+            utilization_penalty.add_mul(1.0 / fv.facility.capacity, fv.allocation);
+        }
     }
 
     let mut common_constraints: Vec<Constraint> = Vec::with_capacity(facility_vars.len() * 2 + 2);
@@ -53,7 +57,7 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
     common_constraints.push(constraint!(
         balance_lhs == (input.demand - input.initial_inventory)
     ));
-    common_constraints.push(constraint!(throughput_objective.clone() <= input.max_petroleum));
+    common_constraints.push(constraint!(throughput_expr <= input.max_petroleum));
 
     let stage_started_at = Instant::now();
 
@@ -75,7 +79,7 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
     stage2_constraints.push(constraint!(deficit >= stage1_deficit - DEFICIT_TOLERANCE));
 
     let stage2_solution = vars
-        .minimise(throughput_objective)
+        .minimise(utilization_penalty)
         .using(default_solver)
         .with_time_limit(stage2_time_limit)
         .with_all(stage2_constraints)

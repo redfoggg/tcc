@@ -3,7 +3,6 @@
   "year": 2025,
   "scope": {
     "refinery_ids": [
-      "LUBNOR",
       "REAM",
       "RECAP",
       "REDUC",
@@ -17,7 +16,7 @@
       "RPBC",
       "RPCC"
     ],
-    "description": "Refineries in GasolineSimulator.Data.Catalog, restricted by estudo_tcc.typ"
+    "description": "Refineries in GasolineSimulator.Data.Catalog. LUBNOR is excluded: it is a lube and asphalt plant and does not produce gasoline A."
   },
   "units": {
     "production_supplied": "m3 gasoline A",
@@ -26,17 +25,17 @@
     "total_fut_pct": "percent"
   },
   "provenance": {
-    "production_supplied": "Precomputed sum of observed monthly gasoline A production in the model refinery scope from anp_2025_gasoline_a_production_by_refinery_monthly.csv",
+    "production_supplied": "Precomputed sum of monthly gasoline A in the model refinery scope from anp_2025_gasoline_a_production_by_refinery_monthly.csv. LUBNOR is out of scope.",
     "demand_target": "Precomputed monthly gasoline A equivalent demand proxy derived from observed gasoline C sales and the documented ethanol blend assumption in anp_2025_demand_proxy_national_monthly.csv",
     "balance": "Precomputed signed production supplied minus demand target. Positive is surplus and negative is shortfall",
-    "total_fut_pct": "Ratio-of-sums total FUT: 100 times the sum of observed monthly petroleum processing across the fixed 13-refinery scope divided by the sum of raw monthly petroleum processing capacity across the same scope. Never an arithmetic mean of individual refinery FUT",
+    "total_fut_pct": "Ratio-of-sums total FUT: 100 times the sum of observed monthly petroleum processing across the fixed 12-refinery scope divided by the sum of raw monthly petroleum processing capacity across the same scope. Never an arithmetic mean of individual refinery FUT",
     "aggregation": "Annual volumes are precomputed sums of the twelve monthly values. Annual total FUT is the ratio of the annual summed petroleum processing to the annual summed petroleum processing capacity, not a mean of the twelve monthly total FUT percentages"
   },
   "annual": {
     "production_supplied_m3": 28273341.442,
     "demand_target_m3": 33444077.492,
     "balance_m3": -5170736.05,
-    "total_fut_pct": 82.08478786228714
+    "total_fut_pct": 82.12151563645742
   },
   "months": [
     {
@@ -44,84 +43,84 @@
       "production_supplied_m3": 2413825.27,
       "demand_target_m3": 2804465.17,
       "balance_m3": -390639.9,
-      "total_fut_pct": 81.59579126896712
+      "total_fut_pct": 81.64627064418208
     },
     {
       "month": "2025-02",
       "production_supplied_m3": 2127910.654,
       "demand_target_m3": 2491296.988,
       "balance_m3": -363386.334,
-      "total_fut_pct": 80.65504055529539
+      "total_fut_pct": 80.72584272060504
     },
     {
       "month": "2025-03",
       "production_supplied_m3": 2380699.801,
       "demand_target_m3": 2701614.961,
       "balance_m3": -320915.16,
-      "total_fut_pct": 82.83042826256865
+      "total_fut_pct": 82.91598974360988
     },
     {
       "month": "2025-04",
       "production_supplied_m3": 2218419.6,
       "demand_target_m3": 2783492.441,
       "balance_m3": -565072.841,
-      "total_fut_pct": 80.22878277132253
+      "total_fut_pct": 80.2733830273801
     },
     {
       "month": "2025-05",
       "production_supplied_m3": 2431693.708,
       "demand_target_m3": 2781835.271,
       "balance_m3": -350141.563,
-      "total_fut_pct": 79.88093737784943
+      "total_fut_pct": 79.93370018328166
     },
     {
       "month": "2025-06",
       "production_supplied_m3": 2326997.517,
       "demand_target_m3": 2705875.828,
       "balance_m3": -378878.311,
-      "total_fut_pct": 82.8537797746567
+      "total_fut_pct": 82.94235181347246
     },
     {
       "month": "2025-07",
       "production_supplied_m3": 2416856.246,
       "demand_target_m3": 2859324.785,
       "balance_m3": -442468.539,
-      "total_fut_pct": 82.36971729038969
+      "total_fut_pct": 82.47202180577979
     },
     {
       "month": "2025-08",
       "production_supplied_m3": 2478771.98,
       "demand_target_m3": 2708800.231,
       "balance_m3": -230028.251,
-      "total_fut_pct": 85.65865916426237
+      "total_fut_pct": 85.68905007264497
     },
     {
       "month": "2025-09",
       "production_supplied_m3": 2279037.908,
       "demand_target_m3": 2762688.549,
       "balance_m3": -483650.641,
-      "total_fut_pct": 86.9181501642742
+      "total_fut_pct": 86.91035240490878
     },
     {
       "month": "2025-10",
       "production_supplied_m3": 2393459.969,
       "demand_target_m3": 2901657.809,
       "balance_m3": -508197.84,
-      "total_fut_pct": 80.06884759414012
+      "total_fut_pct": 80.02379071723213
     },
     {
       "month": "2025-11",
       "production_supplied_m3": 2291688.548,
       "demand_target_m3": 2695550.769,
       "balance_m3": -403862.221,
-      "total_fut_pct": 78.63909118875789
+      "total_fut_pct": 78.60122261029782
     },
     {
       "month": "2025-12",
       "production_supplied_m3": 2513980.241,
       "demand_target_m3": 3247474.69,
       "balance_m3": -733494.449,
-      "total_fut_pct": 83.18956475813431
+      "total_fut_pct": 83.19692894419964
     }
   ]
 }

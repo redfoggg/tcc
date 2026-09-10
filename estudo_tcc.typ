@@ -19,7 +19,7 @@ Dados sempre de 2025, ano de enfoque do trabalho
 + Refinaria presidente Bernardes (RPBC)
 + Refinaria de Paulínia (REPLAN)
 + Refinaria Henrique Lage (REVAP)
-+ Refinaria de Lubrificantes e Derivados de Petróleo do Nordeste (LUBNOR)
++ Refinaria de Lubrificantes e Derivados de Petróleo do Nordeste (LUBNOR): fora do modelo. Não produz gasolina A (parque de lubrificantes, parafina e asfalto). Ver `simulator/docs/data_transformations.md`.
 - Privatizadas:
 + Refinaria Landulpho Alves (RLAM)
 + Refinaria Isaac Sabbá (REMAN)

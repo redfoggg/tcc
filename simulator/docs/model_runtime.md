@@ -7,10 +7,10 @@ Caminhos relativos a `simulator/`. A matemática está em
 
 | Módulo | Papel |
 |---|---|
-| `Data.Repository` | Lê demanda, $K^G$, $K^P$ e $\hat R_i$ dos CSVs |
-| `Data.Catalog` | Nomes e UFs das 13 refinarias |
+| `Data.Repository` | Lê demanda, $K^P$ e $\hat R_i$ dos CSVs |
+| `Data.Catalog` | Nomes e UFs das 12 refinarias |
 | `Data.Historical` | Lê `historical_2025_summary.json` |
-| `Scenarios.YieldSampling` | Sorteia $R_{i,d} \sim \text{Uniforme}(0{,}20,\ \hat R_i)$ |
+| `Scenarios.YieldSampling` | Sorteia $R_{i,d}$ na lista mensal válida da refinaria |
 | `Models.Overrides` | Struct de estoque inicial e ajuste de demanda |
 | `Models.Problem` | Monta o mês e a entrada do NIF |
 | `Models.Refinery` | Struct da refinaria no problema |
@@ -25,10 +25,12 @@ Structs de domínio ficam em `lib/gasoline_simulator/models/`.
 ## Resolução nativa
 
 `native/gasoline_solver` usa `good_lp` e HiGHS. Uma chamada resolve um dia.
-A etapa 1 recebe o orçamento de tempo inteiro. A etapa 2 recebe o tempo
-restante. O Runner fatia o orçamento anual de petróleo por $D_d / \bar R_d$
-e envia o teto do dia. Padrão
-Elixir: 5.000 ms por dia. `Optimal` e `GapLimit` são aceitos.
+A etapa 1 recebe o orçamento de tempo inteiro e minimiza o déficit. A
+etapa 2 recebe o tempo restante e penaliza utilização alta
+($x_{i,d}/C_{i,d}$). O teto de petróleo do dia é a soma de
+$\rho_{i,d} K^P_{i,d}$. $\rho$ sobe até 1, só desce depois do pico, e
+trava em $0{,}90$ pelo excesso do ciclo. Padrão Elixir: 5.000 ms por dia.
+`Optimal` e `GapLimit` são aceitos.
 
 A checagem nativa exige rendimento finito e positivo e `max_petroleum`
 finito e não negativo. Timeout nativo ou
@@ -41,7 +43,7 @@ Falhas genuínas: `:invalid_input`, `:solver_failure`, `:solver_panic`,
 ## Resultado
 
 Cada dia traz saldo, FUT Total, processamento implícito, capacidade bruta,
-estoques, produção, demanda atendida, déficit, cobertura e as 13 refinarias
+estoques, produção, demanda atendida, déficit, cobertura e as 12 refinarias
 com o `simulated_yield` usado. Ativação se o binário for maior que 0,5.
 
 O mensal e o anual somam os dias. O painel mostra só esses agregados.
