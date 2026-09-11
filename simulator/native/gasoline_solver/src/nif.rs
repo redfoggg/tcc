@@ -7,7 +7,6 @@ mod atoms {
     rustler::atoms! {
         ok,
         error,
-        invalid_input,
         solver_failure,
         timeout,
     }
@@ -30,9 +29,6 @@ impl Encoder for NifSolveResult {
 impl From<SolverError> for NifSolveResult {
     fn from(value: SolverError) -> Self {
         match value {
-            SolverError::InvalidInput { reason } => {
-                NifSolveResult::Failed(atoms::invalid_input(), reason)
-            }
             SolverError::SolverFailure { reason } => {
                 NifSolveResult::Failed(atoms::solver_failure(), reason)
             }

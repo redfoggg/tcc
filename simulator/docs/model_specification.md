@@ -12,7 +12,9 @@ execução do modelo. Fontes e conversões: `docs/data_report.md` e
 - $F$: 12 refinarias de `estudo_tcc.typ` (REAM, RECAP, REDUC, REFAP,
   REFMAT, REGAP, REPAR, REPLAN, REVAP, RNEST, RPBC, RPCC). LUBNOR fica de
   fora: é planta de lubrificantes e asfalto e não produz gasolina A.
-- Toda $i \in F$ entra em todo $d \in T$.
+- Cada $i \in F$ é um GenServer. O dia $d$ usa só $F_d$, as plantas cujo
+  processo está no ar. Queda tira $i$ de $F_d$. Recuperação devolve $i$
+  nos dias seguintes. O MILP realoca $D_d$ em $F_d$.
 
 ## Símbolos
 
@@ -50,13 +52,19 @@ $$
 C_{i,d} = \rho_{i,d}\, R_{i,d} K^P_{i,d}
 $$
 
-$\rho$ começa em $1$ (fase aberta). Ao alcançar FUT $\ge 99\%$, a planta
-só desce: $99\%,\ 98\%,\ \ldots$ até $90\%$. Não sobe no meio da descida.
-Ao chegar em $90\%$, trava. O tempo da trava é o excesso do ciclo acima de
-$90\%$, $\sum \max(\mathrm{FUT}-0{,}90,\ 0)$, cobrado a $1$ p.p. por dia.
-Assim a média do ciclo fica perto de $90\%$ ou abaixo. Depois a fase
-aberta volta. A nameplate $K^P$ é o máximo físico. Se $y_{i,d} = 1$, o FUT
-não fica abaixo de 40%:
+$\rho$ começa em $1$ (fase aberta) para planta que já está no ar no primeiro
+dia. Ao alcançar FUT $\ge 99\%$, a planta só desce: $99\%,\ 98\%,\ \ldots$
+até $90\%$. Não sobe no meio da descida. Ao chegar em $90\%$, trava. O
+tempo da trava é o excesso do ciclo acima de $90\%$,
+$\sum \max(\mathrm{FUT}-0{,}90,\ 0)$, cobrado a $1$ p.p. por dia. Assim a
+média do ciclo fica perto de $90\%$ ou abaixo. Depois a fase aberta volta.
+
+Planta religada (processo de volta depois de uma queda) não abre em
+$100\%$. Entra em rampa: $\rho = 0{,}40$ e sobe $1$ p.p. por dia até
+$1$. Só então volta à fase aberta.
+
+A nameplate $K^P$ é o máximo físico. Se $y_{i,d} = 1$, o FUT não fica
+abaixo de 40%:
 
 $$
 L_{i,d} = \min(C_{i,d},\ 0{,}40\, R_{i,d} K^P_{i,d})

@@ -9,9 +9,10 @@ defmodule GasolineSimulator.Application do
   def start(_type, _args) do
     children = [
       {Phoenix.PubSub, name: GasolineSimulator.PubSub},
+      {Registry, keys: :unique, name: GasolineSimulator.Refineries.Registry},
+      GasolineSimulator.Refineries.Supervisor,
       {Task.Supervisor, name: GasolineSimulator.Scenarios.TaskSupervisor},
       GasolineSimulator.Scenarios.Orchestrator,
-      # Start to serve requests, typically the last entry
       GasolineSimulatorWeb.Endpoint
     ]
 

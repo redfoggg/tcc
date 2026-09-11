@@ -15,7 +15,8 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         historical: Historical.load(),
         initial_inventory_m3: nil,
         demand_adjustment_pct: nil,
-        planned_run: nil
+        planned_run: nil,
+        plants: Orchestrator.plant_statuses()
       )
 
     {:ok, socket}
@@ -42,11 +43,26 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   end
 
   @impl true
+  def handle_event("disconnect_plant", %{"id" => id}, socket) do
+    Orchestrator.disconnect_plant(id)
+    {:noreply, socket}
+  end
+
+  def handle_event("reconnect_plant", %{"id" => id}, socket) do
+    Orchestrator.reconnect_plant(id)
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info({:plan_updated, %{id: id} = planned_run}, socket) do
     case socket.assigns.planned_run do
       %{id: ^id} -> {:noreply, assign(socket, planned_run: planned_run)}
       _other -> {:noreply, socket}
     end
+  end
+
+  def handle_info({:plants_updated, plants}, socket) do
+    {:noreply, assign(socket, plants: plants)}
   end
 
   defp parse_float_input(nil), do: nil
@@ -73,6 +89,13 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   defp pct(value), do: fmt(value * 100.0)
   defp fut_pct(nil), do: "n/d"
   defp fut_pct(value), do: fmt(value)
+
+  defp operating_pct(%{up: false}), do: "0.0%"
+  defp operating_pct(%{fut_pct: nil}), do: "n/d"
+  defp operating_pct(%{fut_pct: value}), do: "#{fut_pct(value)}%"
+
+  defp produced_m3(%{produced_m3: nil}), do: "n/d m³"
+  defp produced_m3(%{produced_m3: value}), do: "#{fmt(value, 1, 0)} m³"
 
   defp signed(value, formatter) when value > 0, do: "+#{formatter.(value)}"
   defp signed(value, formatter), do: formatter.(value)
@@ -106,12 +129,70 @@ defmodule GasolineSimulatorWeb.DashboardLive do
             refinaria em 2025. Se o valor seria 0, usa a média nacional. Em seguida
             executa uma simulação de estoque e déficit de janeiro a dezembro. O
             escopo tem 12 refinarias. LUBNOR fica de fora: não produz gasolina A.
+            Derrubar uma planta tira o processo OTP dela. O Planejado realoca a
+            demanda nas que restam até Recuperar. O ano leva pelo menos 30 s.
           </p>
         </div>
 
         <div class="grid items-start gap-8 2xl:grid-cols-2">
           <.historical_panel historical={@historical} />
           <.planned_panel planned_run={@planned_run} />
+        </div>
+
+        <div id="dashboard-plants" class="rounded border p-4 space-y-3">
+          <h2 class="font-semibold">Refinarias no ar</h2>
+          <p class="text-sm opacity-70">
+            Cada item é um GenServer. Ausente não entra no MILP do dia. Ao
+            recuperar, a planta sobe 1 p.p. por dia a partir de 40%. Não
+            volta a 100% no mesmo dia. O FUT e a gasolina A acumulada
+            atualizam a cada dia do Planejado.
+          </p>
+          <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div
+              :for={plant <- @plants}
+              id={"dashboard-plant-#{plant.id}"}
+              class="flex items-start justify-between gap-3 rounded border px-3 py-3"
+            >
+              <div class="min-w-0 space-y-1">
+                <p class="font-medium">{plant.id}</p>
+                <p class="text-xs opacity-60">
+                  {plant.uf} · {if(plant.up, do: "no ar", else: "ausente")}
+                </p>
+                <p
+                  id={"dashboard-plant-fut-#{plant.id}"}
+                  class="text-sm font-mono tabular-nums"
+                >
+                  Operando {operating_pct(plant)}
+                </p>
+                <p
+                  id={"dashboard-plant-produced-#{plant.id}"}
+                  class="text-sm font-mono tabular-nums"
+                >
+                  Produzido {produced_m3(plant)}
+                </p>
+              </div>
+              <button
+                :if={plant.up}
+                type="button"
+                id={"dashboard-disconnect-#{plant.id}"}
+                phx-click="disconnect_plant"
+                phx-value-id={plant.id}
+                class="btn btn-sm"
+              >
+                Derrubar
+              </button>
+              <button
+                :if={not plant.up}
+                type="button"
+                id={"dashboard-reconnect-#{plant.id}"}
+                phx-click="reconnect_plant"
+                phx-value-id={plant.id}
+                class="btn btn-sm"
+              >
+                Recuperar
+              </button>
+            </div>
+          </div>
         </div>
 
         <form phx-submit="run_plan" id="dashboard-planning-form" class="rounded border p-4 space-y-4">

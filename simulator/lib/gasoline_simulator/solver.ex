@@ -6,7 +6,6 @@ defmodule GasolineSimulator.Solver do
 
   @type facility_input :: %{
           id: String.t(),
-          simulated_yield: number(),
           capacity: number(),
           floor: number()
         }
@@ -14,19 +13,11 @@ defmodule GasolineSimulator.Solver do
   @type solver_input :: %{
           demand: number(),
           initial_inventory: number(),
-          max_petroleum: number(),
           facilities: [facility_input()]
         }
 
-  @type error_kind :: :invalid_input | :solver_failure | :solver_panic | :timeout
+  @type error_kind :: :solver_failure | :solver_panic | :timeout
 
-  @doc """
-  Solves one month's MILP.
-
-  The input is assumed well-formed: it is always built by
-  `GasolineSimulator.Models.Problem.to_solver_input/1` from a `%Problem{}` that
-  `GasolineSimulator.Models.Problem.build/1` already validated.
-  """
   @spec solve(solver_input(), keyword()) :: {:ok, map()} | {:error, {error_kind(), String.t()}}
   def solve(input, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, @default_timeout_ms)

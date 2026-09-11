@@ -1,12 +1,11 @@
 defmodule GasolineSimulator.Models.Problem do
   alias GasolineSimulator.Models.Refinery
 
-  @enforce_keys [:month, :demand_m3, :initial_inventory_m3, :max_petroleum_m3]
+  @enforce_keys [:month, :demand_m3, :initial_inventory_m3]
   defstruct [
     :month,
     :demand_m3,
     :initial_inventory_m3,
-    :max_petroleum_m3,
     refineries: []
   ]
 
@@ -14,7 +13,6 @@ defmodule GasolineSimulator.Models.Problem do
           month: String.t(),
           demand_m3: float(),
           initial_inventory_m3: float(),
-          max_petroleum_m3: float(),
           refineries: [Refinery.t()]
         }
 
@@ -38,7 +36,6 @@ defmodule GasolineSimulator.Models.Problem do
     %{
       demand: problem.demand_m3,
       initial_inventory: problem.initial_inventory_m3,
-      max_petroleum: problem.max_petroleum_m3,
       facilities: Enum.map(problem.refineries, &to_facility/1)
     }
   end
@@ -49,6 +46,7 @@ defmodule GasolineSimulator.Models.Problem do
 
   def burst_utilization_ratio, do: @burst_utilization_ratio
   def sustainable_utilization_ratio, do: @sustainable_utilization_ratio
+  def min_utilization_ratio, do: @min_utilization_ratio
   def max_utilization_ratio, do: @burst_utilization_ratio
 
   defp apply_petroleum_limit(refinery) do
@@ -71,11 +69,8 @@ defmodule GasolineSimulator.Models.Problem do
     do: Map.update!(refinery, :floor_m3, &min(&1, refinery.capacity_m3))
 
   defp to_facility(%Refinery{} = refinery) do
-    yield = refinery.simulated_yield
-
     %{
       id: refinery.id,
-      simulated_yield: if(yield > 0.0, do: yield, else: 1.0),
       capacity: refinery.capacity_m3,
       floor: refinery.floor_m3
     }

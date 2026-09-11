@@ -17,8 +17,6 @@ struct FacilityVars<'a> {
 }
 
 pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, SolverError> {
-    validate(input)?;
-
     let mut vars = ProblemVariables::new();
     let mut facility_vars = Vec::with_capacity(input.facilities.len());
 
@@ -35,11 +33,9 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
     let deficit = vars.add(variable().min(0.0));
     let ending_inventory = vars.add(variable().min(0.0));
 
-    let mut throughput_expr = Expression::with_capacity(facility_vars.len());
     let mut production_expr = Expression::with_capacity(facility_vars.len());
     let mut utilization_penalty = Expression::with_capacity(facility_vars.len());
     for fv in &facility_vars {
-        throughput_expr.add_mul(1.0 / fv.facility.simulated_yield, fv.allocation);
         production_expr.add_mul(1.0, fv.allocation);
         if fv.facility.capacity > 0.0 {
             utilization_penalty.add_mul(1.0 / fv.facility.capacity, fv.allocation);
@@ -57,7 +53,6 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
     common_constraints.push(constraint!(
         balance_lhs == (input.demand - input.initial_inventory)
     ));
-    common_constraints.push(constraint!(throughput_expr <= input.max_petroleum));
 
     let stage_started_at = Instant::now();
 
@@ -141,26 +136,6 @@ fn map_resolution_error(error: ResolutionError, time_limit_secs: f64, stage: u8)
         other => SolverError::SolverFailure {
             reason: format!("stage {stage} {other}"),
         },
-    }
-}
-
-fn validate(input: &SolverInput) -> Result<(), SolverError> {
-    let valid_yields = input
-        .facilities
-        .iter()
-        .all(|facility| facility.simulated_yield.is_finite() && facility.simulated_yield > 0.0);
-    let valid_max_petroleum = input.max_petroleum.is_finite() && input.max_petroleum >= 0.0;
-
-    if valid_yields && valid_max_petroleum {
-        Ok(())
-    } else if !valid_yields {
-        Err(SolverError::InvalidInput {
-            reason: "simulated yield must be finite and positive".to_string(),
-        })
-    } else {
-        Err(SolverError::InvalidInput {
-            reason: "max petroleum must be finite and non-negative".to_string(),
-        })
     }
 }
 

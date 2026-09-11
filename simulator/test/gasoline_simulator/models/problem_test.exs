@@ -9,7 +9,6 @@ defmodule GasolineSimulator.Models.ProblemTest do
         month: "2025-01",
         demand_m3: 1_000.0,
         initial_inventory_m3: 0.0,
-        max_petroleum_m3: 1_000.0,
         refineries: [
           %{
             id: "REPAR",
@@ -34,7 +33,6 @@ defmodule GasolineSimulator.Models.ProblemTest do
         month: "2025-01",
         demand_m3: 1_000.0,
         initial_inventory_m3: 0.0,
-        max_petroleum_m3: 1_000.0,
         refineries: [
           %{
             id: "IDLE",

@@ -14,6 +14,12 @@ defmodule GasolineSimulator.Data.Catalog do
     "RNEST" => {"Refinaria Abreu e Lima", "PE"}
   }
 
+  @spec ids() :: [String.t()]
+  def ids, do: @refineries |> Map.keys() |> Enum.sort()
+
+  @spec all() :: [map()]
+  def all, do: Enum.map(ids(), &find/1)
+
   @spec find(String.t()) :: map() | nil
   def find(id) do
     case Map.get(@refineries, id) do

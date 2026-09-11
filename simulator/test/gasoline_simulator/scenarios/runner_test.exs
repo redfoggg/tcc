@@ -1,6 +1,7 @@
 defmodule GasolineSimulator.Scenarios.RunnerTest do
   use ExUnit.Case, async: true
 
+  alias GasolineSimulator.Data.Catalog
   alias GasolineSimulator.Data.Repository
   alias GasolineSimulator.Scenarios.Runner
 
@@ -8,7 +9,7 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
   @moduletag timeout: 120_000
 
   test "the planned annual run solves every 2025 day and aggregates twelve months" do
-    assert {:ok, %{days: days, months: months, annual: annual}} = Runner.run(%{})
+    assert {:ok, %{days: days, months: months, annual: annual}} = Runner.run(%{}, min_year_ms: 0)
 
     assert length(days) == 365
     assert length(months) == 12
@@ -36,19 +37,20 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
     assert_in_delta annual.demand_m3, Enum.sum(Enum.map(days, & &1.demand_m3)), 1.0e-3
     assert_in_delta annual.demand_m3, Enum.sum(Enum.map(months, & &1.demand_m3)), 1.0e-3
 
-    assert Enum.all?(days, &(length(&1.refineries) == 12))
-    assert Enum.all?(months, &(length(&1.refineries) == 12))
+    alive_count = length(GasolineSimulator.Refineries.Supervisor.alive_ids())
+    assert Enum.all?(days, &(length(&1.refineries) == alive_count))
+    assert Enum.all?(months, &(length(&1.refineries) == alive_count))
 
     assert Enum.all?(days, fn day ->
              Enum.all?(day.refineries, fn refinery ->
-               max_petroleum = refinery.processing_capacity_m3
-               gasoline_from_petroleum = refinery.simulated_yield * max_petroleum
-               min_petroleum = 0.40 * refinery.processing_capacity_m3
+               nameplate = refinery.processing_capacity_m3
+               gasoline_from_petroleum = refinery.simulated_yield * nameplate
+               min_petroleum = 0.40 * nameplate
 
                refinery.floor_m3 <= refinery.capacity_m3 + 1.0e-6 and
                  refinery.capacity_m3 <= gasoline_from_petroleum + 1.0e-6 and
                  refinery.allocated_m3 <= gasoline_from_petroleum + 1.0e-6 and
-                 refinery.petroleum_processed_m3 <= max_petroleum + 1.0e-6 and
+                 refinery.petroleum_processed_m3 <= nameplate + 1.0e-6 and
                  (not refinery.active or
                     refinery.petroleum_processed_m3 + 1.0e-6 >= min_petroleum)
              end)
@@ -84,7 +86,7 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
   end
 
   test "after hitting 100% FUT the cap only falls and then locks from surplus above 90%" do
-    assert {:ok, %{days: days}} = Runner.run(%{})
+    assert {:ok, %{days: days}} = Runner.run(%{}, min_year_ms: 0)
     burst = GasolineSimulator.Models.Problem.burst_utilization_ratio()
     sustainable = GasolineSimulator.Models.Problem.sustainable_utilization_ratio()
 
@@ -153,8 +155,8 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
   end
 
   test "monthly served demand changes across independent planning runs" do
-    assert {:ok, %{months: first}} = Runner.run(%{})
-    assert {:ok, %{months: second}} = Runner.run(%{})
+    assert {:ok, %{months: first}} = Runner.run(%{}, min_year_ms: 0)
+    assert {:ok, %{months: second}} = Runner.run(%{}, min_year_ms: 0)
 
     first_served = Enum.map(first, & &1.served_demand_m3)
     second_served = Enum.map(second, & &1.served_demand_m3)
@@ -177,7 +179,7 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
       |> List.flatten()
       |> Map.new(&{&1.id, &1})
 
-    assert {:ok, %{days: days}} = Runner.run(%{})
+    assert {:ok, %{days: days}} = Runner.run(%{}, min_year_ms: 0)
 
     for day <- days, refinery <- day.refineries do
       plant = Map.fetch!(plants, refinery.id)
@@ -189,8 +191,37 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
     end
   end
 
+  test "on_day is called once for every solved day" do
+    {:ok, agent} = Agent.start_link(fn -> 0 end)
+
+    assert {:ok, %{days: days}} =
+             Runner.run(%{}, min_year_ms: 0, on_day: fn _day -> Agent.update(agent, &(&1 + 1)) end)
+
+    assert Agent.get(agent, & &1) == length(days)
+    assert length(days) == 365
+  end
+
+  test "a rejoined plant ramps from 40 percent instead of jumping to 100" do
+    down = MapSet.new(Date.range(~D[2025-02-01], ~D[2025-02-10]))
+
+    alive_ids = fn day ->
+      if MapSet.member?(down, day), do: Catalog.ids() -- ["REPAR"], else: Catalog.ids()
+    end
+
+    assert {:ok, %{days: days}} = Runner.run(%{}, min_year_ms: 0, alive_ids: alive_ids)
+    by_day = Map.new(days, &{&1.month, &1})
+
+    refute Enum.any?(by_day["2025-02-01"].refineries, &(&1.id == "REPAR"))
+
+    first = Enum.find(by_day["2025-02-11"].refineries, &(&1.id == "REPAR"))
+    second = Enum.find(by_day["2025-02-12"].refineries, &(&1.id == "REPAR"))
+
+    assert_in_delta utilization_cap(first), 0.40, 1.0e-6
+    assert_in_delta utilization_cap(second), 0.41, 1.0e-6
+  end
+
   test "the sampled simulated yield is the same value used throughout the result for that run" do
-    assert {:ok, %{days: days}} = Runner.run(%{})
+    assert {:ok, %{days: days}} = Runner.run(%{}, min_year_ms: 0)
 
     for day <- days, refinery <- day.refineries do
       if refinery.simulated_yield <= 0.0 do
@@ -202,5 +233,9 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
                         1.0e-6
       end
     end
+  end
+
+  defp utilization_cap(refinery) do
+    refinery.capacity_m3 / (refinery.simulated_yield * refinery.processing_capacity_m3)
   end
 end

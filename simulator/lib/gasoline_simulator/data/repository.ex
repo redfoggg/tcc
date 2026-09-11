@@ -89,7 +89,7 @@ defmodule GasolineSimulator.Data.Repository do
       id: capacity_row["refinery_code"],
       name: catalog_entry.name,
       uf: catalog_entry.uf,
-      capacity_m3: parse_float(capacity_row["capacity_gasoline_a_m3_month"]),
+      capacity_m3: 0.0,
       processing_capacity_m3: parse_float(capacity_row["capacity_m3_month"]),
       observed_monthly_yields: Map.get(monthly_yields, capacity_row["refinery_code"], []),
       national_average_yield: national_average
