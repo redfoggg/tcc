@@ -12,13 +12,6 @@ defmodule GasolineSimulator.Data.Repository do
   @spec day_key(Date.t()) :: String.t()
   def day_key(%Date{} = date), do: Date.to_iso8601(date)
 
-  @spec month_key(1..12) :: String.t()
-  def month_key(month) when month in 1..12,
-    do: "#{@year}-" <> String.pad_leading(Integer.to_string(month), 2, "0")
-
-  @spec month_key(Date.t()) :: String.t()
-  def month_key(%Date{} = date), do: month_key(date.month)
-
   @spec load_year(keyword()) :: map()
   def load_year(opts \\ []) do
     curated_dir = curated_dir(opts)

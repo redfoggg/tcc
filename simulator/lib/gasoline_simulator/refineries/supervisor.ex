@@ -15,15 +15,8 @@ defmodule GasolineSimulator.Refineries.Supervisor do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  def start_plant(attrs) do
-    spec = %{
-      id: attrs.id,
-      start: {Plant, :start_link, [attrs]},
-      restart: :temporary,
-      type: :worker
-    }
-
-    DynamicSupervisor.start_child(__MODULE__, spec)
+  defp start_plant(attrs) do
+    DynamicSupervisor.start_child(__MODULE__, {Plant, attrs})
   end
 
   def alive_ids do

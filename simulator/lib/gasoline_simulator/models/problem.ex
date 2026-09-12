@@ -47,7 +47,6 @@ defmodule GasolineSimulator.Models.Problem do
   def burst_utilization_ratio, do: @burst_utilization_ratio
   def sustainable_utilization_ratio, do: @sustainable_utilization_ratio
   def min_utilization_ratio, do: @min_utilization_ratio
-  def max_utilization_ratio, do: @burst_utilization_ratio
 
   defp apply_petroleum_limit(refinery) do
     ratio = Map.get(refinery, :max_utilization_ratio, @burst_utilization_ratio)

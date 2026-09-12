@@ -15,7 +15,7 @@ defmodule GasolineSimulator.Refineries.Plant do
     GenServer.start_link(__MODULE__, attrs, name: via(attrs.id))
   end
 
-  def via(id), do: {:via, Registry, {@registry, id}}
+  defp via(id), do: {:via, Registry, {@registry, id}}
 
   def pid(id) do
     case Registry.lookup(@registry, id) do

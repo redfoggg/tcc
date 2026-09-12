@@ -11,71 +11,61 @@ defmodule GasolineSimulator.Scenarios.Runner do
 
   @spec run(map(), keyword()) :: {:ok, map()} | {:error, term()}
   def run(params \\ %{}, opts \\ []) do
-    overrides = overrides(params)
     year_data = Repository.load_year(Keyword.take(opts, [:data_dir]))
-    simulated_yields = YieldSampling.draw(year_data.refineries_by_day)
-    solver_opts = Keyword.take(opts, [:timeout, :task_supervisor])
-    min_year_ms = Keyword.get(opts, :min_year_ms, @default_min_year_ms)
-    alive_ids = Keyword.get(opts, :alive_ids, &default_alive_ids/1)
-    on_day = Keyword.get(opts, :on_day, fn _day -> :ok end)
 
-    with {:ok, days} <-
-           run_days(
-             overrides,
-             year_data,
-             simulated_yields,
-             solver_opts,
-             min_year_ms,
-             alive_ids,
-             on_day
-           ) do
-      months = months_from_days(days)
-      {:ok, %{days: days, months: months, annual: summarize(days)}}
+    ctx = %{
+      overrides: overrides(params),
+      year_data: year_data,
+      simulated_yields: YieldSampling.draw(year_data.refineries_by_day),
+      solver_opts: Keyword.take(opts, [:timeout, :task_supervisor]),
+      min_year_ms: Keyword.get(opts, :min_year_ms, @default_min_year_ms),
+      alive_ids: Keyword.get(opts, :alive_ids, &default_alive_ids/1),
+      on_day: Keyword.get(opts, :on_day, fn _day -> :ok end)
+    }
+
+    with {:ok, days} <- run_days(ctx) do
+      {:ok, %{days: days, months: months_from_days(days), annual: summarize(days)}}
     end
   end
 
   @ratio_step 0.01
   @burst_hit_ratio 0.99
 
-  defp run_days(
-         overrides,
-         year_data,
-         simulated_yields,
-         solver_opts,
-         min_year_ms,
-         alive_ids,
-         on_day
-       ) do
+  defp run_days(ctx) do
     days = Repository.days()
     day_count = length(days)
     started_at = System.monotonic_time(:millisecond)
 
     days
     |> Enum.with_index(1)
-    |> Enum.reduce_while({[], overrides.initial_inventory_m3, %{}, :start}, fn {day, index},
-                                                                               {acc, opening,
-                                                                                pace, prior} ->
-      alive = MapSet.new(alive_ids.(day))
-      pace = apply_rejoins(pace, prior, alive)
-
-      result =
-        solve_day(day, opening, pace, overrides, year_data, simulated_yields, solver_opts, alive)
+    |> Enum.reduce_while(empty_year(ctx), fn {day, index}, state ->
+      alive = MapSet.new(ctx.alive_ids.(day))
+      pace = apply_rejoins(state.pace, state.prior, alive)
+      result = solve_day(day, state.opening, pace, ctx, alive)
 
       if result.status == :ok do
-        on_day.(result)
-        pace_year(started_at, index, day_count, min_year_ms)
-        present = MapSet.new(Enum.map(result.refineries, & &1.id))
+        ctx.on_day.(result)
+        pace_year(started_at, index, day_count, ctx.min_year_ms)
 
         {:cont,
-         {[result | acc], result.ending_inventory_m3, update_pace(pace, result), present}}
+         %{
+           acc: [result | state.acc],
+           opening: result.ending_inventory_m3,
+           pace: update_pace(pace, result),
+           prior: alive
+         }}
       else
         {:halt, {:error, result}}
       end
     end)
     |> case do
       {:error, failed} -> {:error, failed}
-      {acc, _inventory, _pace, _prior} -> {:ok, Enum.reverse(acc)}
+      %{acc: acc} -> {:ok, Enum.reverse(acc)}
     end
+  end
+
+  defp empty_year(ctx) do
+    %{acc: [], opening: ctx.overrides.initial_inventory_m3, pace: %{}, prior: :start}
   end
 
   defp default_alive_ids(_day), do: PlantSupervisor.alive_ids()
@@ -83,22 +73,9 @@ defmodule GasolineSimulator.Scenarios.Runner do
   defp apply_rejoins(pace, :start, _alive), do: pace
 
   defp apply_rejoins(pace, prior, alive) do
-    Enum.reduce(alive, pace, fn id, acc ->
-      if MapSet.member?(prior, id) do
-        acc
-      else
-        Map.put(acc, id, ramp_pace())
-      end
+    Enum.reduce(MapSet.difference(alive, prior), pace, fn id, acc ->
+      Map.put(acc, id, new_pace(:ramping))
     end)
-  end
-
-  defp ramp_pace do
-    %{
-      phase: :ramping,
-      ratio: Problem.min_utilization_ratio(),
-      surplus: 0.0,
-      lock_left: 0
-    }
   end
 
   defp pace_year(_started_at, _index, _day_count, min_year_ms) when min_year_ms <= 0, do: :ok
@@ -110,12 +87,12 @@ defmodule GasolineSimulator.Scenarios.Runner do
     :ok
   end
 
-  defp solve_day(day, opening, pace, overrides, year_data, simulated_yields, solver_opts, alive) do
-    day_yields = Map.fetch!(simulated_yields, day)
-    demand = Map.fetch!(year_data.demand_by_day, day).demand_m3
+  defp solve_day(day, opening, pace, ctx, alive) do
+    day_yields = Map.fetch!(ctx.simulated_yields, day)
+    demand = Map.fetch!(ctx.year_data.demand_by_day, day).demand_m3
 
     refineries =
-      year_data.refineries_by_day
+      ctx.year_data.refineries_by_day
       |> Map.fetch!(day)
       |> Enum.filter(&MapSet.member?(alive, &1.id))
       |> Enum.map(fn refinery ->
@@ -127,12 +104,12 @@ defmodule GasolineSimulator.Scenarios.Runner do
     {:ok, problem} =
       Problem.build(%{
         month: Repository.day_key(day),
-        demand_m3: adjusted_demand(overrides, demand),
+        demand_m3: adjusted_demand(ctx.overrides, demand),
         initial_inventory_m3: opening,
         refineries: refineries
       })
 
-    Result.from_solver(problem, Solver.solve(Problem.to_solver_input(problem), solver_opts))
+    Result.from_solver(problem, Solver.solve(Problem.to_solver_input(problem), ctx.solver_opts))
   end
 
   defp plant_ratio(pace, id) do
@@ -142,18 +119,17 @@ defmodule GasolineSimulator.Scenarios.Runner do
     end
   end
 
-  defp initial_pace do
-    %{
-      phase: :open,
-      ratio: Problem.burst_utilization_ratio(),
-      surplus: 0.0,
-      lock_left: 0
-    }
+  defp new_pace(:open) do
+    %{phase: :open, ratio: Problem.burst_utilization_ratio(), surplus: 0.0, lock_left: 0}
+  end
+
+  defp new_pace(:ramping) do
+    %{phase: :ramping, ratio: Problem.min_utilization_ratio(), surplus: 0.0, lock_left: 0}
   end
 
   defp update_pace(pace, result) do
     Enum.reduce(result.refineries, pace, fn refinery, acc ->
-      previous = Map.get(acc, refinery.id, initial_pace())
+      previous = Map.get(acc, refinery.id, new_pace(:open))
       Map.put(acc, refinery.id, next_pace(previous, refinery))
     end)
   end
@@ -179,7 +155,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
     left = left - 1
 
     if left <= 0 do
-      initial_pace()
+      new_pace(:open)
     else
       %{state | lock_left: left}
     end

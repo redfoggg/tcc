@@ -18,7 +18,8 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
 
     assert Enum.map(days, & &1.month) == Enum.map(Repository.days(), &Repository.day_key/1)
 
-    assert Enum.map(months, & &1.month) == Enum.map(1..12, &Repository.month_key/1)
+    assert Enum.map(months, & &1.month) ==
+             Enum.map(1..12, &("2025-" <> String.pad_leading(Integer.to_string(&1), 2, "0")))
 
     days
     |> Enum.chunk_every(2, 1, :discard)

@@ -75,19 +75,14 @@ defmodule GasolineSimulatorWeb.DashboardLive do
     end
   end
 
-  defp fmt(value, divisor \\ 1, places \\ 1)
-  defp fmt(nil, _divisor, _places), do: "n/d"
-
-  defp fmt(value, divisor, places) do
+  defp fmt(value, divisor \\ 1, places \\ 1) do
     :erlang.float_to_binary(value / divisor * 1.0, decimals: places)
   end
 
   defp annual_volume(value), do: fmt(value, 1_000_000, 2)
   defp monthly_volume(value), do: fmt(value, 1_000, 1)
 
-  defp pct(nil), do: "n/d"
   defp pct(value), do: fmt(value * 100.0)
-  defp fut_pct(nil), do: "n/d"
   defp fut_pct(value), do: fmt(value)
 
   defp operating_pct(%{up: false}), do: "0.0%"
@@ -110,7 +105,6 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   defp balance_info(value) when value < 0, do: {"déficit", "text-error"}
   defp balance_info(_value), do: {"equilibrado", "text-base-content"}
 
-  defp plan_status(:pending), do: "pendente"
   defp plan_status(:running), do: "em execução"
   defp plan_status(:completed), do: "concluído"
   defp plan_status(:failed), do: "falhou"
@@ -139,61 +133,7 @@ defmodule GasolineSimulatorWeb.DashboardLive do
           <.planned_panel planned_run={@planned_run} />
         </div>
 
-        <div id="dashboard-plants" class="rounded border p-4 space-y-3">
-          <h2 class="font-semibold">Refinarias no ar</h2>
-          <p class="text-sm opacity-70">
-            Cada item é um GenServer. Ausente não entra no MILP do dia. Ao
-            recuperar, a planta sobe 1 p.p. por dia a partir de 40%. Não
-            volta a 100% no mesmo dia. O FUT e a gasolina A acumulada
-            atualizam a cada dia do Planejado.
-          </p>
-          <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <div
-              :for={plant <- @plants}
-              id={"dashboard-plant-#{plant.id}"}
-              class="flex items-start justify-between gap-3 rounded border px-3 py-3"
-            >
-              <div class="min-w-0 space-y-1">
-                <p class="font-medium">{plant.id}</p>
-                <p class="text-xs opacity-60">
-                  {plant.uf} · {if(plant.up, do: "no ar", else: "ausente")}
-                </p>
-                <p
-                  id={"dashboard-plant-fut-#{plant.id}"}
-                  class="text-sm font-mono tabular-nums"
-                >
-                  Operando {operating_pct(plant)}
-                </p>
-                <p
-                  id={"dashboard-plant-produced-#{plant.id}"}
-                  class="text-sm font-mono tabular-nums"
-                >
-                  Produzido {produced_m3(plant)}
-                </p>
-              </div>
-              <button
-                :if={plant.up}
-                type="button"
-                id={"dashboard-disconnect-#{plant.id}"}
-                phx-click="disconnect_plant"
-                phx-value-id={plant.id}
-                class="btn btn-sm"
-              >
-                Derrubar
-              </button>
-              <button
-                :if={not plant.up}
-                type="button"
-                id={"dashboard-reconnect-#{plant.id}"}
-                phx-click="reconnect_plant"
-                phx-value-id={plant.id}
-                class="btn btn-sm"
-              >
-                Recuperar
-              </button>
-            </div>
-          </div>
-        </div>
+        <.plants_panel plants={@plants} />
 
         <form phx-submit="run_plan" id="dashboard-planning-form" class="rounded border p-4 space-y-4">
           <h2 class="font-semibold">Controles do Planejado 2025</h2>
@@ -232,6 +172,62 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         </form>
       </div>
     </Layouts.app>
+    """
+  end
+
+  attr :plants, :list, required: true
+
+  defp plants_panel(assigns) do
+    ~H"""
+    <div id="dashboard-plants" class="rounded border p-4 space-y-3">
+      <h2 class="font-semibold">Refinarias no ar</h2>
+      <p class="text-sm opacity-70">
+        Cada item é um GenServer. Ausente não entra no MILP do dia. Ao
+        recuperar, a planta sobe 1 p.p. por dia a partir de 40%. Não
+        volta a 100% no mesmo dia. O FUT e a gasolina A acumulada
+        atualizam a cada dia do Planejado.
+      </p>
+      <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          :for={plant <- @plants}
+          id={"dashboard-plant-#{plant.id}"}
+          class="flex items-start justify-between gap-3 rounded border px-3 py-3"
+        >
+          <div class="min-w-0 space-y-1">
+            <p class="font-medium">{plant.id}</p>
+            <p class="text-xs opacity-60">
+              {plant.uf} · {if(plant.up, do: "no ar", else: "ausente")}
+            </p>
+            <p id={"dashboard-plant-fut-#{plant.id}"} class="text-sm font-mono tabular-nums">
+              Operando {operating_pct(plant)}
+            </p>
+            <p id={"dashboard-plant-produced-#{plant.id}"} class="text-sm font-mono tabular-nums">
+              Produzido {produced_m3(plant)}
+            </p>
+          </div>
+          <button
+            :if={plant.up}
+            type="button"
+            id={"dashboard-disconnect-#{plant.id}"}
+            phx-click="disconnect_plant"
+            phx-value-id={plant.id}
+            class="btn btn-sm"
+          >
+            Derrubar
+          </button>
+          <button
+            :if={not plant.up}
+            type="button"
+            id={"dashboard-reconnect-#{plant.id}"}
+            phx-click="reconnect_plant"
+            phx-value-id={plant.id}
+            class="btn btn-sm"
+          >
+            Recuperar
+          </button>
+        </div>
+      </div>
+    </div>
     """
   end
 
