@@ -6,9 +6,9 @@ use good_lp::{
     constraint, default_solver, variable, Constraint, Expression, ResolutionError, Solution,
     SolverModel, Variable,
 };
-use std::time::Instant;
 
-const DEFICIT_TOLERANCE: f64 = 1e-6;
+const DEFICIT_WEIGHT: f64 = 1.0;
+const UTILIZATION_WEIGHT: f64 = 1e-4;
 
 struct FacilityVars<'a> {
     facility: &'a FacilityInput,
@@ -34,68 +34,47 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
     let ending_inventory = vars.add(variable().min(0.0));
 
     let mut production_expr = Expression::with_capacity(facility_vars.len());
-    let mut utilization_penalty = Expression::with_capacity(facility_vars.len());
+    let mut objective = Expression::with_capacity(facility_vars.len() + 1);
+    objective.add_mul(DEFICIT_WEIGHT, deficit);
     for fv in &facility_vars {
         production_expr.add_mul(1.0, fv.allocation);
         if fv.facility.capacity > 0.0 {
-            utilization_penalty.add_mul(1.0 / fv.facility.capacity, fv.allocation);
+            objective.add_mul(UTILIZATION_WEIGHT / fv.facility.capacity, fv.allocation);
         }
     }
 
-    let mut common_constraints: Vec<Constraint> = Vec::with_capacity(facility_vars.len() * 2 + 2);
+    let mut constraints: Vec<Constraint> = Vec::with_capacity(facility_vars.len() * 3 + 1);
     for fv in &facility_vars {
-        common_constraints.push(constraint!(
+        constraints.push(constraint!(fv.active == 1));
+        constraints.push(constraint!(
             fv.allocation <= fv.active * fv.facility.capacity
         ));
-        common_constraints.push(constraint!(fv.allocation >= fv.active * fv.facility.floor));
+        constraints.push(constraint!(fv.allocation >= fv.active * fv.facility.floor));
     }
     let balance_lhs = production_expr + deficit - ending_inventory;
-    common_constraints.push(constraint!(
+    constraints.push(constraint!(
         balance_lhs == (input.demand - input.initial_inventory)
     ));
 
-    let stage_started_at = Instant::now();
-
-    let stage1_solution = vars
-        .clone()
-        .minimise(deficit)
+    let solution = vars
+        .minimise(objective)
         .using(default_solver)
         .with_time_limit(time_limit_secs)
-        .with_all(common_constraints.clone())
+        .with_all(constraints)
         .solve()
-        .map_err(|error| map_resolution_error(error, time_limit_secs, 1))?;
-    check_solution_status(stage1_solution.status(), time_limit_secs, 1)?;
-
-    let stage1_deficit = stage1_solution.value(deficit);
-    let stage2_time_limit = (time_limit_secs - stage_started_at.elapsed().as_secs_f64()).max(0.0);
-
-    let mut stage2_constraints = common_constraints;
-    stage2_constraints.push(constraint!(deficit <= stage1_deficit + DEFICIT_TOLERANCE));
-    stage2_constraints.push(constraint!(deficit >= stage1_deficit - DEFICIT_TOLERANCE));
-
-    let stage2_solution = vars
-        .minimise(utilization_penalty)
-        .using(default_solver)
-        .with_time_limit(stage2_time_limit)
-        .with_all(stage2_constraints)
-        .solve()
-        .map_err(|error| map_resolution_error(error, stage2_time_limit, 2))?;
-    check_solution_status(stage2_solution.status(), stage2_time_limit, 2)?;
+        .map_err(|error| map_resolution_error(error, time_limit_secs))?;
+    check_solution_status(solution.status(), time_limit_secs)?;
 
     let facilities: Vec<FacilityResult> = facility_vars
         .iter()
-        .map(|fv| build_facility_result(fv, &stage2_solution))
+        .map(|fv| build_facility_result(fv, &solution))
         .collect();
 
     let production: f64 = facilities.iter().map(|result| result.allocated).sum();
-    let deficit_value = stage2_solution.value(deficit).max(0.0);
-    let ending_inventory_value = stage2_solution.value(ending_inventory).max(0.0);
+    let deficit_value = solution.value(deficit).max(0.0);
+    let ending_inventory_value = solution.value(ending_inventory).max(0.0);
     let served_demand = input.demand - deficit_value;
-    let coverage = if input.demand > 0.0 {
-        served_demand / input.demand
-    } else {
-        1.0
-    };
+    let coverage = served_demand / input.demand;
 
     Ok(SolverOutput {
         demand: input.demand,
@@ -120,34 +99,30 @@ fn build_facility_result(fv: &FacilityVars<'_>, solution: &impl Solution) -> Fac
     }
 }
 
-fn map_resolution_error(error: ResolutionError, time_limit_secs: f64, stage: u8) -> SolverError {
+fn map_resolution_error(error: ResolutionError, time_limit_secs: f64) -> SolverError {
     match error {
         ResolutionError::Infeasible => SolverError::SolverFailure {
-            reason: format!("stage {stage} solver unexpectedly reported no feasible allocation"),
+            reason: "solver unexpectedly reported no feasible allocation".to_string(),
         },
         ResolutionError::Unbounded => SolverError::SolverFailure {
-            reason: format!("stage {stage} objective is unbounded"),
+            reason: "objective is unbounded".to_string(),
         },
         ResolutionError::Other("NoSolutionFound") => SolverError::Timeout {
             reason: format!(
-                "stage {stage} solver reached its time limit of {time_limit_secs}s before finding a feasible allocation"
+                "solver reached its time limit of {time_limit_secs}s before finding a feasible allocation"
             ),
         },
         other => SolverError::SolverFailure {
-            reason: format!("stage {stage} {other}"),
+            reason: other.to_string(),
         },
     }
 }
 
-fn check_solution_status(
-    status: SolutionStatus,
-    time_limit_secs: f64,
-    stage: u8,
-) -> Result<(), SolverError> {
+fn check_solution_status(status: SolutionStatus, time_limit_secs: f64) -> Result<(), SolverError> {
     match status {
         SolutionStatus::TimeLimit => Err(SolverError::Timeout {
             reason: format!(
-                "stage {stage} solver reached its time limit of {time_limit_secs}s before proving optimality"
+                "solver reached its time limit of {time_limit_secs}s before proving optimality"
             ),
         }),
         SolutionStatus::Optimal | SolutionStatus::GapLimit => Ok(()),

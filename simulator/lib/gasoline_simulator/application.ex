@@ -13,6 +13,7 @@ defmodule GasolineSimulator.Application do
       GasolineSimulator.Refineries.Supervisor,
       {Task.Supervisor, name: GasolineSimulator.Scenarios.TaskSupervisor},
       GasolineSimulator.Scenarios.Orchestrator,
+      GasolineSimulator.Scenarios.Study,
       GasolineSimulatorWeb.Endpoint
     ]
 

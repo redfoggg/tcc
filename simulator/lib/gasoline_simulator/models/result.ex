@@ -103,9 +103,7 @@ defmodule GasolineSimulator.Models.Result do
     end)
   end
 
-  defp petroleum_processed(_allocated, yield) when yield <= 0.0, do: 0.0
   defp petroleum_processed(allocated, yield), do: allocated / yield
 
-  defp total_fut_pct(_processed, capacity) when capacity <= 0.0, do: 0.0
   defp total_fut_pct(processed, capacity), do: processed / capacity * 100.0
 end

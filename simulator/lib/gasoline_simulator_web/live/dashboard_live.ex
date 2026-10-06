@@ -3,10 +3,14 @@ defmodule GasolineSimulatorWeb.DashboardLive do
 
   alias GasolineSimulator.Data.Historical
   alias GasolineSimulator.Scenarios.Orchestrator
+  alias GasolineSimulator.Scenarios.Study
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: Orchestrator.subscribe()
+    if connected?(socket) do
+      Orchestrator.subscribe()
+      Study.subscribe()
+    end
 
     socket =
       socket
@@ -16,7 +20,8 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         initial_inventory_m3: nil,
         demand_adjustment_pct: nil,
         planned_run: nil,
-        plants: Orchestrator.plant_statuses()
+        plants: Orchestrator.plant_statuses(),
+        study: Study.status()
       )
 
     {:ok, socket}
@@ -53,6 +58,13 @@ defmodule GasolineSimulatorWeb.DashboardLive do
     {:noreply, socket}
   end
 
+  def handle_event("run_study", _params, socket) do
+    case Study.start() do
+      {:ok, study} -> {:noreply, assign(socket, study: study)}
+      {:error, :already_running} -> {:noreply, socket}
+    end
+  end
+
   @impl true
   def handle_info({:plan_updated, %{id: id} = planned_run}, socket) do
     case socket.assigns.planned_run do
@@ -65,14 +77,16 @@ defmodule GasolineSimulatorWeb.DashboardLive do
     {:noreply, assign(socket, plants: plants)}
   end
 
+  def handle_info({:study_updated, study}, socket) do
+    {:noreply, assign(socket, study: study)}
+  end
+
   defp parse_float_input(nil), do: nil
   defp parse_float_input(""), do: nil
 
   defp parse_float_input(value) do
-    case Float.parse(value) do
-      {number, _rest} -> number
-      :error -> nil
-    end
+    {number, ""} = Float.parse(value)
+    number
   end
 
   defp fmt(value, divisor \\ 1, places \\ 1) do
@@ -104,6 +118,16 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   defp balance_info(value) when value > 0, do: {"superávit", "text-success"}
   defp balance_info(value) when value < 0, do: {"déficit", "text-error"}
   defp balance_info(_value), do: {"equilibrado", "text-base-content"}
+
+  defp study_status(%{status: :running} = study) do
+    name = study.scenario_id || "preparando"
+
+    "Em execução: cenário #{study.scenario_index} de #{study.scenario_count}, execução #{study.run} de #{study.runs} (#{name})."
+  end
+
+  defp study_status(%{status: :completed}), do: "Concluída. Os CSV estão na pasta abaixo."
+  defp study_status(%{status: :failed} = study), do: "A bateria falhou: #{study.error}"
+  defp study_status(_study), do: "Ainda não executada."
 
   defp plan_status(:running), do: "em execução"
   defp plan_status(:completed), do: "concluído"
@@ -170,6 +194,31 @@ defmodule GasolineSimulatorWeb.DashboardLive do
 
           <.button id="dashboard-run-plan">Executar Planejado 2025</.button>
         </form>
+
+        <section id="dashboard-study" class="rounded border p-4 space-y-3">
+          <h2 class="font-semibold">Bateria metodológica</h2>
+          <p class="text-sm opacity-70">
+            Dez cenários, dez execuções cada. O botão grava um CSV por
+            execução em data/studies. As plantas deste painel permanecem
+            como estão. Cada cenário traz o próprio estoque e a própria
+            demanda.
+          </p>
+          <p id="dashboard-study-status" class="text-sm">{study_status(@study)}</p>
+          <p
+            :if={@study.output_dir}
+            id="dashboard-study-path"
+            class="text-sm font-mono break-all"
+          >
+            {@study.output_dir}
+          </p>
+          <.button
+            id="dashboard-run-study"
+            phx-click="run_study"
+            disabled={@study.status == :running}
+          >
+            Rodar bateria
+          </.button>
+        </section>
       </div>
     </Layouts.app>
     """

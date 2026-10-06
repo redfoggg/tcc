@@ -4,7 +4,7 @@ defmodule GasolineSimulator.Models.ProblemTest do
   alias GasolineSimulator.Models.Problem
 
   test "gasoline cap follows the plant yield and oil cap, not a national-average column" do
-    {:ok, problem} =
+    problem =
       Problem.build(%{
         month: "2025-01",
         demand_m3: 1_000.0,
@@ -28,7 +28,7 @@ defmodule GasolineSimulator.Models.ProblemTest do
   end
 
   test "a zero yield plant has no gasoline cap" do
-    {:ok, problem} =
+    problem =
       Problem.build(%{
         month: "2025-01",
         demand_m3: 1_000.0,

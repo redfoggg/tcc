@@ -196,7 +196,10 @@ defmodule GasolineSimulator.Scenarios.RunnerTest do
     {:ok, agent} = Agent.start_link(fn -> 0 end)
 
     assert {:ok, %{days: days}} =
-             Runner.run(%{}, min_year_ms: 0, on_day: fn _day -> Agent.update(agent, &(&1 + 1)) end)
+             Runner.run(%{},
+               min_year_ms: 0,
+               on_day: fn _day -> Agent.update(agent, &(&1 + 1)) end
+             )
 
     assert Agent.get(agent, & &1) == length(days)
     assert length(days) == 365

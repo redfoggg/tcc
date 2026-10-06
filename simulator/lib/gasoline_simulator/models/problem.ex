@@ -16,19 +16,18 @@ defmodule GasolineSimulator.Models.Problem do
           refineries: [Refinery.t()]
         }
 
-  @spec build(map()) :: {:ok, t()}
+  @spec build(map()) :: t()
   def build(attrs) do
     fields = Map.keys(Refinery.__struct__())
 
     refineries =
-      attrs
-      |> Map.get(:refineries, [])
+      attrs.refineries
       |> Enum.map(&apply_petroleum_limit/1)
       |> Enum.map(&apply_min_utilization/1)
       |> Enum.map(&clamp_floor/1)
       |> Enum.map(&struct!(Refinery, Map.take(&1, fields)))
 
-    {:ok, struct!(__MODULE__, Map.put(attrs, :refineries, refineries))}
+    struct!(__MODULE__, Map.put(attrs, :refineries, refineries))
   end
 
   @spec to_solver_input(t()) :: map()
@@ -49,7 +48,7 @@ defmodule GasolineSimulator.Models.Problem do
   def min_utilization_ratio, do: @min_utilization_ratio
 
   defp apply_petroleum_limit(refinery) do
-    ratio = Map.get(refinery, :max_utilization_ratio, @burst_utilization_ratio)
+    ratio = refinery.max_utilization_ratio
 
     gasoline_from_petroleum =
       refinery.simulated_yield * ratio * refinery.processing_capacity_m3

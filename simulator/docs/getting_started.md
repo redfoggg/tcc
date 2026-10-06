@@ -25,6 +25,7 @@ LUBNOR não entra: não produz gasolina A.
 |---|---|
 | `docs/model_specification.md` | Conjuntos, restrições e FUT |
 | `docs/model_runtime.md` | Módulos Elixir e Rust, timeout e painel |
+| `docs/methodology.md` | Bateria de 10 cenários, 10 execuções e CSV |
 | `docs/data_report.md` | Fontes ANP e arquivos curados |
 | `docs/data_transformations.md` | Conversões, calibração e limitações |
 

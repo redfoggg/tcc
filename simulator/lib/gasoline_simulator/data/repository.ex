@@ -12,6 +12,19 @@ defmodule GasolineSimulator.Data.Repository do
   @spec day_key(Date.t()) :: String.t()
   def day_key(%Date{} = date), do: Date.to_iso8601(date)
 
+  @spec annual_gasoline_m3(keyword()) :: %{String.t() => float()}
+  def annual_gasoline_m3(opts \\ []) do
+    opts
+    |> curated_dir()
+    |> Path.join(@production_file)
+    |> read_csv_rows()
+    |> Enum.filter(&in_catalog?/1)
+    |> Enum.group_by(& &1["refinery_code"])
+    |> Map.new(fn {id, rows} ->
+      {id, Enum.sum(Enum.map(rows, &parse_float(&1["gasolina_a_m3"])))}
+    end)
+  end
+
   @spec load_year(keyword()) :: map()
   def load_year(opts \\ []) do
     curated_dir = curated_dir(opts)
@@ -84,7 +97,7 @@ defmodule GasolineSimulator.Data.Repository do
       uf: catalog_entry.uf,
       capacity_m3: 0.0,
       processing_capacity_m3: parse_float(capacity_row["capacity_m3_month"]),
-      observed_monthly_yields: Map.get(monthly_yields, capacity_row["refinery_code"], []),
+      observed_monthly_yields: Map.fetch!(monthly_yields, capacity_row["refinery_code"]),
       national_average_yield: national_average
     }
   end
@@ -113,7 +126,7 @@ defmodule GasolineSimulator.Data.Repository do
       yields =
         Enum.flat_map(rows, fn row ->
           throughput = parse_float(row["utilized_throughput_m3"])
-          production = Map.get(production_by_key, {id, row["month"]}, 0.0)
+          production = Map.fetch!(production_by_key, {id, row["month"]})
 
           if usable_for_yield?(production, throughput) do
             [production / throughput]

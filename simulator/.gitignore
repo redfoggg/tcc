@@ -44,3 +44,6 @@ npm-debug.log
 # Local cache for the Expert language server.
 /.expert/
 
+# Generated scenario-batch CSVs.
+/data/studies/
+

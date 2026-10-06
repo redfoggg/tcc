@@ -13,10 +13,12 @@ defmodule GasolineSimulator.Scenarios.Runner do
   def run(params \\ %{}, opts \\ []) do
     year_data = Repository.load_year(Keyword.take(opts, [:data_dir]))
 
+    yields_for = Keyword.get(opts, :yields, &YieldSampling.draw/1)
+
     ctx = %{
       overrides: overrides(params),
       year_data: year_data,
-      simulated_yields: YieldSampling.draw(year_data.refineries_by_day),
+      simulated_yields: yields_for.(year_data.refineries_by_day),
       solver_opts: Keyword.take(opts, [:timeout, :task_supervisor]),
       min_year_ms: Keyword.get(opts, :min_year_ms, @default_min_year_ms),
       alive_ids: Keyword.get(opts, :alive_ids, &default_alive_ids/1),
@@ -24,7 +26,13 @@ defmodule GasolineSimulator.Scenarios.Runner do
     }
 
     with {:ok, days} <- run_days(ctx) do
-      {:ok, %{days: days, months: months_from_days(days), annual: summarize(days)}}
+      {:ok,
+       %{
+         days: days,
+         months: months_from_days(days),
+         annual: summarize(days),
+         simulated_yields: ctx.simulated_yields
+       }}
     end
   end
 
@@ -101,7 +109,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
         |> Map.put(:max_utilization_ratio, plant_ratio(pace, refinery.id))
       end)
 
-    {:ok, problem} =
+    problem =
       Problem.build(%{
         month: Repository.day_key(day),
         demand_m3: adjusted_demand(ctx.overrides, demand),
@@ -180,7 +188,6 @@ defmodule GasolineSimulator.Scenarios.Runner do
     end
   end
 
-  defp fut_ratio(%{processing_capacity_m3: kp}) when kp <= 0.0, do: 0.0
   defp fut_ratio(refinery), do: refinery.petroleum_processed_m3 / refinery.processing_capacity_m3
 
   defp lock_days(surplus) do
@@ -230,7 +237,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
       allocated = Enum.sum(Enum.map(rows, & &1.allocated_m3))
       petroleum = Enum.sum(Enum.map(rows, & &1.petroleum_processed_m3))
       processing_capacity = Enum.sum(Enum.map(rows, & &1.processing_capacity_m3))
-      yield = if petroleum > 0.0, do: allocated / petroleum, else: first.simulated_yield
+      yield = allocated / petroleum
 
       %{
         id: first.id,

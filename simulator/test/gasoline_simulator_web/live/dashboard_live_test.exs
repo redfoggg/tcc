@@ -9,17 +9,20 @@ defmodule GasolineSimulatorWeb.DashboardLiveTest do
     assert html =~ "Operando"
     assert html =~ "Produzido"
 
-    send(view.pid, {:plants_updated,
-     [
-       %{
-         id: "REPAR",
-         name: "Refinaria Presidente Getúlio Vargas",
-         uf: "PR",
-         up: true,
-         fut_pct: 40.0,
-         produced_m3: 1234.0
-       }
-     ]})
+    send(
+      view.pid,
+      {:plants_updated,
+       [
+         %{
+           id: "REPAR",
+           name: "Refinaria Presidente Getúlio Vargas",
+           uf: "PR",
+           up: true,
+           fut_pct: 40.0,
+           produced_m3: 1234.0
+         }
+       ]}
+    )
 
     rendered = render(view)
     assert rendered =~ "Operando 40.0%"

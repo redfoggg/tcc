@@ -1,4 +1,4 @@
-use gasoline_solver::{solve, FacilityInput, SolverError, SolverInput};
+use gasoline_solver::{solve, FacilityInput, SolverInput};
 
 const LIMIT: f64 = 5.0;
 const EPS: f64 = 1e-6;
@@ -26,6 +26,7 @@ fn solves_normal_allocation() {
     assert!((output.production - 100.0).abs() < EPS);
     assert!(output.deficit.abs() < EPS);
     assert!((output.coverage - 1.0).abs() < EPS);
+    assert!(output.facilities[0].active);
 }
 
 #[test]
@@ -34,6 +35,7 @@ fn reports_deficit_when_capacity_is_insufficient() {
 
     assert!((output.production - 100.0).abs() < EPS);
     assert!((output.deficit - 400.0).abs() < EPS);
+    assert!(output.facilities[0].active);
 }
 
 #[test]
@@ -42,6 +44,7 @@ fn respects_operating_floor() {
 
     assert!((output.production - 30.0).abs() < EPS);
     assert!((output.ending_inventory - 20.0).abs() < EPS);
+    assert!(output.facilities[0].active);
 }
 
 #[test]
@@ -54,11 +57,66 @@ fn lowers_utilization_when_demand_is_below_the_safe_cap() {
 }
 
 #[test]
-fn does_not_trade_deficit_for_lower_throughput() {
+fn fills_a_small_plant_when_the_large_one_is_at_cap() {
+    let output = solve(
+        &input(
+            100.0,
+            0.0,
+            vec![facility("BIG", 50.0, 0.0), facility("SMALL", 30.0, 0.0)],
+        ),
+        LIMIT,
+    )
+    .unwrap();
+
+    assert!((output.deficit - 20.0).abs() < EPS);
+    assert!((output.production - 80.0).abs() < EPS);
+    assert!(output.facilities.iter().all(|plant| plant.active));
+
+    let big = output
+        .facilities
+        .iter()
+        .find(|plant| plant.id == "BIG")
+        .unwrap();
+    let small = output
+        .facilities
+        .iter()
+        .find(|plant| plant.id == "SMALL")
+        .unwrap();
+    assert!((big.allocated - 50.0).abs() < EPS);
+    assert!((small.allocated - 30.0).abs() < EPS);
+}
+
+#[test]
+fn uses_a_small_plant_up_to_its_cap_when_demand_remains() {
     let output = solve(&input(100.0, 0.0, vec![facility("T1", 30.0, 0.0)]), LIMIT).unwrap();
 
     assert!((output.production - 30.0).abs() < EPS);
     assert!((output.deficit - 70.0).abs() < EPS);
+    assert!(output.facilities[0].active);
+}
+
+#[test]
+fn keeps_every_plant_running_when_one_could_cover_demand() {
+    let output = solve(
+        &input(
+            100.0,
+            0.0,
+            vec![facility("BIG", 500.0, 0.0), facility("SMALL", 80.0, 20.0)],
+        ),
+        LIMIT,
+    )
+    .unwrap();
+
+    assert!(output.deficit.abs() < EPS);
+    assert!((output.production - 100.0).abs() < EPS);
+    assert!(output.facilities.iter().all(|plant| plant.active));
+
+    let small = output
+        .facilities
+        .iter()
+        .find(|plant| plant.id == "SMALL")
+        .unwrap();
+    assert!(small.allocated + EPS >= 20.0);
 }
 
 #[test]
@@ -77,9 +135,3 @@ fn uses_plant_cap_when_demand_exceeds_it() {
     assert!((output.production - 190.0).abs() < EPS);
 }
 
-#[test]
-fn reports_timeout() {
-    let error = solve(&input(10.0, 0.0, vec![facility("T1", 100.0, 0.0)]), 0.0).unwrap_err();
-
-    assert!(matches!(error, SolverError::Timeout { .. }));
-}

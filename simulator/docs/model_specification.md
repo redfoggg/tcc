@@ -21,6 +21,7 @@ execução do modelo. Fontes e conversões: `docs/data_report.md` e
 | Símbolo | Significado | Unidade |
 |---|---|---|
 | $R_{i,d}$ | Rendimento simulado de gasolina A | meses válidos de $i$ em 2025 |
+| $\rho_{i,d}$ | Teto de utilização de $i$ no dia $d$. Não é o FUT realizado | adimensional, $[0{,}40,\ 1]$ |
 | $K^G_{i,d}$ | Coluna curada teórica. Não entra no Planejado | m³/dia |
 | $K^P_{i,d}$ | Capacidade bruta de processamento | m³ petróleo/dia |
 | $L_{i,d}$ | Piso técnico se ativa: $0{,}40\, R_{i,d} K^P_{i,d}$ | m³/dia |
@@ -46,13 +47,18 @@ R_{i,\text{mês}} & \text{caso contrário}
 \end{cases}
 $$
 
-A produção efetiva é
+$\rho_{i,d}$ é a fração máxima de $K^P_{i,d}$ que a refinaria $i$ pode
+processar no dia $d$. O processamento fica em
+$P_{i,d} \le \rho_{i,d}\, K^P_{i,d}$, e o FUT realizado da planta ligada
+fica em $[0{,}40,\ \rho_{i,d}]$. Dentro do dia, $\rho_{i,d}$ é um dado.
+Ele só muda de um dia para o outro, pelo ciclo abaixo. A produção
+efetiva de gasolina A é
 
 $$
 C_{i,d} = \rho_{i,d}\, R_{i,d} K^P_{i,d}
 $$
 
-$\rho$ começa em $1$ (fase aberta) para planta que já está no ar no primeiro
+$\rho_{i,d}$ começa em $1$ (fase aberta) para planta que já está no ar no primeiro
 dia. Ao alcançar FUT $\ge 99\%$, a planta só desce: $99\%,\ 98\%,\ \ldots$
 até $90\%$. Não sobe no meio da descida. Ao chegar em $90\%$, trava. O
 tempo da trava é o excesso do ciclo acima de $90\%$,
@@ -76,11 +82,22 @@ Não há orçamento global de petróleo. Cada refinaria tem o próprio teto
 $\rho_{i,d} K^P_{i,d}$: sobe até 100%, desce sem retorno até 90%, depois
 trava pelo desvio da média acima de 90%.
 
-Etapa 1: minimizar $u_d$. Pode usar 100% de FUT para atender demanda. Etapa
-2: fixar $u_d$ no ótimo da etapa 1 com tolerância $10^{-6}$ m³ e minimizar
-$\sum_i x_{i,d} / C_{i,d}$. O FUT alto é o penalizador. Estoque final não
-entra na função objetivo. Se a demanda cabe abaixo do teto do dia, o FUT
-cai. Planta ligada fica em $[0{,}40,\ \rho_{i,d}]$.
+Toda refinaria em $F_d$ fica ligada: $y_{i,d} = 1$. O piso vale para
+todas. Planta derrubada no painel sai de $F_d$ e não entra no dia.
+$S_d$ permanece no balanço.
+
+Uma função só, soma ponderada:
+
+$$
+\min \; u_d + 10^{-4} \sum_{i \in F_d \,:\, C_{i,d} > 0} \frac{x_{i,d}}{C_{i,d}}
+$$
+
+O déficit entra com peso $1$ por m³. O uso de cada teto entra com peso
+$10^{-4}$ m³ por ponto de $x/C$. Encher uma planta inteira pesa
+$0{,}0001$ m³ de déficit. Um metro cúbico descoberto pesa $1$. O termo
+de uso não compensa deixar demanda descoberta e não desliga planta.
+Ele só evita produzir além da demanda e dos pisos. Planta ligada fica
+em $[0{,}40,\ \rho_{i,d}]$.
 
 ## Restrições
 
@@ -105,7 +122,7 @@ P_{i,d} \le \rho_{i,d}\, K^P_{i,d}
 $$
 
 $$
-u_d \ge 0, \quad S_d \ge 0, \quad y_{i,d} \in \{0, 1\}
+u_d \ge 0, \quad S_d \ge 0, \quad y_{i,d} = 1
 $$
 
 $S_0$ vem do painel. Para o dia seguinte, $S_{d-1}$ é o estoque resolvido

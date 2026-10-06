@@ -5,8 +5,14 @@ defmodule GasolineSimulator.Scenarios.YieldSamplingTest do
 
   test "draw/1 returns a map with exactly the same period keys as the input" do
     input = %{
-      1 => [%{id: "A", observed_monthly_yields: [0.30]}, %{id: "B", observed_monthly_yields: [0.22]}],
-      2 => [%{id: "A", observed_monthly_yields: [0.30]}, %{id: "B", observed_monthly_yields: [0.22]}]
+      1 => [
+        %{id: "A", observed_monthly_yields: [0.30]},
+        %{id: "B", observed_monthly_yields: [0.22]}
+      ],
+      2 => [
+        %{id: "A", observed_monthly_yields: [0.30]},
+        %{id: "B", observed_monthly_yields: [0.22]}
+      ]
     }
 
     result = YieldSampling.draw(input)
@@ -16,8 +22,14 @@ defmodule GasolineSimulator.Scenarios.YieldSamplingTest do
 
   test "draw/1 returns exactly the same refinery ids as the input for each period" do
     input = %{
-      1 => [%{id: "A", observed_monthly_yields: [0.30]}, %{id: "B", observed_monthly_yields: [0.22]}],
-      2 => [%{id: "A", observed_monthly_yields: [0.30]}, %{id: "B", observed_monthly_yields: [0.22]}]
+      1 => [
+        %{id: "A", observed_monthly_yields: [0.30]},
+        %{id: "B", observed_monthly_yields: [0.22]}
+      ],
+      2 => [
+        %{id: "A", observed_monthly_yields: [0.30]},
+        %{id: "B", observed_monthly_yields: [0.22]}
+      ]
     }
 
     result = YieldSampling.draw(input)
@@ -53,11 +65,11 @@ defmodule GasolineSimulator.Scenarios.YieldSamplingTest do
       YieldSampling.draw(%{
         1 => [
           %{id: "idle", observed_monthly_yields: [0.0, 0.0], national_average_yield: 0.26},
-          %{id: "missing", national_average_yield: 0.26}
+          %{id: "empty", observed_monthly_yields: [], national_average_yield: 0.26}
         ]
       })
 
     assert_in_delta result[1]["idle"], 0.26, 1.0e-12
-    assert_in_delta result[1]["missing"], 0.26, 1.0e-12
+    assert_in_delta result[1]["empty"], 0.26, 1.0e-12
   end
 end
