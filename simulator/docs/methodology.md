@@ -137,3 +137,9 @@ entrou no modelo, e os totais do dia: demanda, produção, déficit,
 estoques e FUT total.
 
 A pasta `data/studies/` fica de fora do git.
+
+## Ressalva
+
+A demanda proxy é afetada pelos números de mercado: as vendas de
+gasolina C foram observadas no regime de preços vigente. O modelo a
+trata como exógena, o que é uma simplificação.
