@@ -101,15 +101,17 @@ Cada execução sorteia uma região e um bloco de dois meses civis
 consecutivos. O início cai entre janeiro e novembro. Todas as plantas
 da região ficam fora nesse bloco. O rendimento segue o sorteio diário.
 
-| Região | Refinarias |
-|---|---|
-| sao_paulo | REPLAN, REVAP, RPBC, RECAP |
-| sul | REPAR, REFAP |
-| nordeste | REFMAT, RNEST, RPCC |
-| rio_minas | REDUC, REGAP |
+| Região | Refinarias | Entra no sorteio |
+|---|---|---|
+| norte | REAM | não |
+| sao_paulo | REPLAN, REVAP, RPBC, RECAP | sim |
+| sul | REPAR, REFAP | sim |
+| nordeste | REFMAT, RNEST, RPCC | sim |
+| rio_minas | REDUC, REGAP | sim |
 
-REAM fica no catálogo e fora desses grupos: o Norte do escopo tem uma
-planta só.
+Norte é a REAM. Ela permanece no catálogo e no ar quando outra região
+sai. O sorteio não a escolhe porque uma planta só não forma um cluster
+regional. Parada de uma refinaria é o cenário 7.
 
 ### 9. estoque_de_abertura
 
