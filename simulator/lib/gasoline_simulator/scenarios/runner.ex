@@ -29,7 +29,6 @@ defmodule GasolineSimulator.Scenarios.Runner do
       min_year_ms: Keyword.get(opts, :min_year_ms, @default_min_year_ms),
       alive_ids: Keyword.get(opts, :alive_ids, &default_alive_ids/1),
       on_day: Keyword.get(opts, :on_day, fn _day -> :ok end),
-      transit: Keyword.get(opts, :transit, {:fixed, overrides.transit_days}),
       burst: Keyword.get(opts, :burst_utilization_ratio, Problem.burst_utilization_ratio()),
       sustainable:
         Keyword.get(opts, :sustainable_utilization_ratio, Problem.sustainable_utilization_ratio()),
@@ -100,7 +99,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
     credit_gasoline(result.refineries, ctx.run_id)
 
     result
-    |> Logistics.dispatch(day, ctx.transit, present, ctx.run_id, ctx.failure_pct, closed_pairs(ctx, day))
+    |> Logistics.dispatch(day, present, ctx.run_id, ctx.failure_pct, closed_pairs(ctx, day))
     |> plant_stocks(ctx.run_id)
   end
 
@@ -232,7 +231,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
       |> Map.new()
 
     overrides = struct!(Overrides, values)
-    %{overrides | transit_days: Overrides.transit_days(overrides.transit_days)}
+    overrides
   end
 
   defp adjusted_demand(%Overrides{demand_adjustment_pct: pct}, demand_m3),

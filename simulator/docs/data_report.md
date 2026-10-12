@@ -41,7 +41,7 @@ no FUT. `data/scripts/curate_other_charges.py` grava esse corte.
 - Observado: processamento, produção de gasolina A e vendas de gasolina C
 - Derivado: proxy de demanda e capacidades em m³
 - Simulado: $R_{i,d}$
-- Hipotético: ajuste de demanda, dias de trânsito da remessa e porcentagem de falha das entregas
+- Hipotético: ajuste de demanda e porcentagem de falha das entregas
 
 Colunas `*_provenance` viajam com os CSVs. O `Repository` não revalida esse
 vocabulário.

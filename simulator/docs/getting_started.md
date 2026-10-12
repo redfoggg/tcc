@@ -14,9 +14,10 @@ refinaria em 2025, e multiplica o petróleo que o plano mandou. O painel
 mostra o agregado mensal e anual. Não há estoque nacional. Planta que
 produziu acima do plano envia a sobra para a que ficou abaixo, em comboios
 de no máximo 30 m³, e só se o comboio tiver pelo menos 20 m³.
-Controles: ajuste de demanda, dias de trânsito da remessa, porcentagem de
+Controles: ajuste de demanda, porcentagem de
 falha das entregas para cada refinaria de destino, derrubar e
-recuperar planta. O prazo mínimo é 1 dia. Cada entrega é um processo.
+recuperar planta. O prazo de cada comboio é o tempo de caminhão da
+estrada, com mínimo de 1 dia. Cada entrega é um processo.
 A origem avisa a planta com falta e o volume entra na demanda no dia da
 chegada. A porcentagem vai de 0 a 100. Em 0 a remessa segue sem falha
 forçada. Em 100 toda entrega para aquela refinaria falha e a carga se

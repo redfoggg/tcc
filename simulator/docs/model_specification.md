@@ -143,8 +143,11 @@ passa para o dia seguinte como saldo do país.
 
 ## Remessa
 
-$N$ é o número de dias de trânsito. O mínimo e o padrão são $1$. Não há
-remessa no mesmo dia.
+O prazo de cada comboio é o tempo de caminhão da estrada. A conta é o
+teto de quilômetros / 60 / 24, com mínimo de 1 dia. Não há remessa no
+mesmo dia. A volta usa o mesmo prazo. Se a origem tenta outra planta, o
+prazo passa a ser o daquele par. Os quilômetros estão em
+`Refineries.Distances`.
 
 A remessa cobre a falta de uma planta contra o próprio plano. A falta é
 $P_{i,d} R^{\text{plano}} - x_{i,d}$, quando é maior que zero. A sobra de
@@ -226,8 +229,6 @@ Planta ligada fica em $[0{,}40,\ \rho_{i,d}]$. Definição e fontes:
 
 ## Controles
 
-$D_d = D_d^{\text{base}} (1 + a/100)$. $N$ é o prazo da remessa, no painel,
-com mínimo $1$. A bateria usa $N = 1$, exceto o cenário de remessa. Nesse
-caso cada par usa o teto de (rodovia / 60 / 24) guardado em
-`Refineries.Distances`, ainda com mínimo $1$. A conta que gerou esses
-quilômetros está em `docs/refinery_distances.md`.
+$D_d = D_d^{\text{base}} (1 + a/100)$. O prazo da remessa é o tempo de
+caminhão de cada par, o teto de (rodovia / 60 / 24), com mínimo $1$. A
+conta que gerou esses quilômetros está em `docs/refinery_distances.md`.

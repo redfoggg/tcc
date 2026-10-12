@@ -20,7 +20,6 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         page_title: "Painel de alocação de gasolina A",
         historical: Historical.load(),
         demand_adjustment_pct: nil,
-        transit_days: 1,
         failure_pct: %{},
         planned_run: nil,
         plants: Orchestrator.plant_statuses(),
@@ -34,12 +33,10 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   @impl true
   def handle_event("run_plan", params, socket) do
     demand_adjustment_pct = params |> Map.get("demand_adjustment_pct") |> parse_float_input()
-    transit_days = params |> Map.get("transit_days") |> parse_int_input() || 1
     failure_pct = params |> Map.get("failure_pct", %{}) |> Plant.failure_pct()
 
     controls = %{
       demand_adjustment_pct: demand_adjustment_pct,
-      transit_days: transit_days,
       failure_pct: failure_pct
     }
 
@@ -49,7 +46,6 @@ defmodule GasolineSimulatorWeb.DashboardLive do
      assign(socket,
        planned_run: planned_run,
        demand_adjustment_pct: demand_adjustment_pct,
-       transit_days: transit_days,
        failure_pct: failure_pct
      )}
   end
@@ -98,16 +94,6 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   defp parse_float_input(value) do
     {number, ""} = Float.parse(value)
     number
-  end
-
-  defp parse_int_input(nil), do: nil
-  defp parse_int_input(""), do: nil
-
-  defp parse_int_input(value) do
-    case Integer.parse(to_string(value)) do
-      {number, ""} when number >= 1 -> number
-      _ -> nil
-    end
   end
 
   defp fmt(value, divisor \\ 1, places \\ 1) do
@@ -207,21 +193,6 @@ defmodule GasolineSimulatorWeb.DashboardLive do
                 class="input input-bordered"
               />
             </div>
-
-            <div>
-              <label for="dashboard-transit-days" class="text-sm font-medium">
-                Dias de trânsito da remessa (mínimo 1)
-              </label>
-              <input
-                type="number"
-                step="1"
-                min="1"
-                name="transit_days"
-                id="dashboard-transit-days"
-                value={@transit_days}
-                class="input input-bordered"
-              />
-            </div>
           </div>
 
           <div class="space-y-2">
@@ -257,9 +228,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
           <p class="text-sm opacity-70">
             Dez cenários, dez execuções cada. O botão grava um CSV por
             execução em data/studies. As plantas deste painel permanecem
-            como estão. Cada cenário traz a própria demanda. O cenário de
-            remessa usa o tempo de caminhão de cada par. O ajuste de demanda,
-            os dias de trânsito e a porcentagem de falha do formulário não
+            como estão. Cada cenário traz a própria demanda. Toda remessa usa
+            o tempo de caminhão de cada par. O ajuste de demanda e a
+            porcentagem de falha do formulário não
             entram na bateria. A referência sorteia de 1% a 5% de falha em
             cada rota. A falha alta sorteia de 41% a 100%. Os demais cenários
             deixam a porcentagem em 1.

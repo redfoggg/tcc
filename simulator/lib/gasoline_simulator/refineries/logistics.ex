@@ -21,27 +21,27 @@ defmodule GasolineSimulator.Refineries.Logistics do
   @convoy_m3 30.0
   @convoy_min_m3 20.0
 
-  def dispatch(result, day, transit, present, run_id, failure_pct \\ %{}, closed_roads \\ MapSet.new()) do
+  def dispatch(result, day, present, run_id, failure_pct \\ %{}, closed_roads \\ MapSet.new()) do
     result.refineries
     |> Enum.filter(&(&1.id in present))
     |> reliefs()
-    |> Enum.each(&place(&1, day, transit, run_id, failure_pct, closed_roads))
+    |> Enum.each(&place(&1, day, run_id, failure_pct, closed_roads))
 
     result
   end
 
-  defp place({_origin, volume, _destinations}, _day, _transit, _run_id, _failure_pct, _closed_roads)
+  defp place({_origin, volume, _destinations}, _day, _run_id, _failure_pct, _closed_roads)
        when volume <= 0.0,
        do: :ok
 
-  defp place({origin, volume, destinations}, day, transit, run_id, failure_pct, closed_roads) do
+  defp place({origin, volume, destinations}, day, run_id, failure_pct, closed_roads) do
     volume
     |> convoys()
-    |> Enum.each(&ship_convoy(origin, &1, destinations, day, transit, run_id, failure_pct, closed_roads))
+    |> Enum.each(&ship_convoy(origin, &1, destinations, day, run_id, failure_pct, closed_roads))
   end
 
-  defp ship_convoy(origin, volume, destinations, day, transit, run_id, failure_pct, closed_roads) do
-    case Plant.ship(origin, volume, day, transit, destinations, run_id, failure_pct, closed_roads) do
+  defp ship_convoy(origin, volume, destinations, day, run_id, failure_pct, closed_roads) do
+    case Plant.ship(origin, volume, day, destinations, run_id, failure_pct, closed_roads) do
       {:ok, _shipped} -> :ok
       {:error, :absent} -> Plant.hold(origin, volume, run_id)
     end

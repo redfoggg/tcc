@@ -27,20 +27,8 @@ defmodule GasolineSimulator.Refineries.Plant do
 
   def arrivals(id, day, run_id), do: call(id, {:arrivals, day, run_id})
 
-  def ship(
-        id,
-        volume,
-        day,
-        transit,
-        peer_ids,
-        run_id,
-        failure_pct \\ %{},
-        closed_roads \\ MapSet.new()
-      ) do
-    call(
-      id,
-      {:ship, volume, day, transit, peer_ids, run_id, failure_pct(failure_pct), closed_roads}
-    )
+  def ship(id, volume, day, peer_ids, run_id, failure_pct \\ %{}, closed_roads \\ MapSet.new()) do
+    call(id, {:ship, volume, day, peer_ids, run_id, failure_pct(failure_pct), closed_roads})
   end
 
   def failure_pct(values) when is_map(values) do
@@ -211,16 +199,11 @@ defmodule GasolineSimulator.Refineries.Plant do
     {:reply, {:ok, volume}, put_list(state, :expected, run_id, later)}
   end
 
-  def handle_call(
-        {:ship, volume, day, transit, peer_ids, run_id, failure_pct, closed_roads},
-        _from,
-        state
-      ) do
+  def handle_call({:ship, volume, day, peer_ids, run_id, failure_pct, closed_roads}, _from, state) do
     case deliver(
            state,
            volume,
            day,
-           transit,
            peers_of(state.id, peer_ids),
            run_id,
            failure_pct,
@@ -337,11 +320,7 @@ defmodule GasolineSimulator.Refineries.Plant do
     Map.put(state, field, Map.put(Map.get(state, field), run_id, deliveries))
   end
 
-  defp arrival_on(day, _origin, _destination, {:fixed, days}) do
-    Date.add(day, days)
-  end
-
-  defp arrival_on(day, origin, destination, :pair) do
+  defp arrival_on(day, origin, destination) do
     Date.add(day, Distances.transit_days(origin, destination))
   end
 
@@ -351,22 +330,21 @@ defmodule GasolineSimulator.Refineries.Plant do
     |> Enum.uniq()
   end
 
-  defp deliver(state, volume, _day, _transit, _peers, _run_id, _failure_pct, _closed_roads)
+  defp deliver(state, volume, _day, _peers, _run_id, _failure_pct, _closed_roads)
        when volume <= 0.0,
        do: {:ok, state}
 
-  defp deliver(_state, _volume, _day, _transit, [], _run_id, _failure_pct, _closed_roads),
-    do: :unclaimed
+  defp deliver(_state, _volume, _day, [], _run_id, _failure_pct, _closed_roads), do: :unclaimed
 
-  defp deliver(state, volume, day, transit, [peer | rest], run_id, failure_pct, closed_roads) do
+  defp deliver(state, volume, day, [peer | rest], run_id, failure_pct, closed_roads) do
     if route_paused?(state, peer, day, run_id) or road_closed?(state.id, peer, closed_roads) do
-      deliver(state, volume, day, transit, rest, run_id, failure_pct, closed_roads)
+      deliver(state, volume, day, rest, run_id, failure_pct, closed_roads)
     else
       attrs = %{
         origin_id: state.id,
         destination_id: peer,
         volume_m3: volume,
-        arrival: arrival_on(day, state.id, peer, transit),
+        arrival: arrival_on(day, state.id, peer),
         run_id: run_id
       }
 
@@ -388,11 +366,11 @@ defmodule GasolineSimulator.Refineries.Plant do
 
             {:error, :absent} ->
               GenServer.stop(pid, :normal)
-              deliver(state, volume, day, transit, rest, run_id, failure_pct, closed_roads)
+              deliver(state, volume, day, rest, run_id, failure_pct, closed_roads)
           end
 
         _other ->
-          deliver(state, volume, day, transit, rest, run_id, failure_pct, closed_roads)
+          deliver(state, volume, day, rest, run_id, failure_pct, closed_roads)
       end
     end
   end

@@ -17,7 +17,7 @@ Caminhos relativos a `simulator/`. A matemática está em
 | `Refineries.Supervisor` | Árvore `:one_for_one` das 12 plantas |
 | `Data.Historical` | Lê `historical_2025_summary.json` |
 | `Scenarios.YieldSampling` | Sorteia $R_{i,d}$ na lista mensal válida da refinaria |
-| `Models.Overrides` | Ajuste de demanda e dias de trânsito |
+| `Models.Overrides` | Ajuste de demanda |
 | `Models.Problem` | Monta o dia e a entrada do NIF |
 | `Models.Refinery` | Struct da refinaria no problema |
 | `Models.Result` | Junta solução nativa, FUT e rendimento usado |
@@ -80,7 +80,8 @@ ninguém recebe, o volume fica na origem. O Runner não guarda quem
 recebeu. Um cenário pode passar `closed_roads`, a função do dia que
 lista os pares de estrada fechados. O par fecha nos dois sentidos. O
 cenário de rotas bloqueadas fecha três pares por dois meses. O painel
-não fecha estrada. A bateria usa 1 dia, exceto o cenário de remessa. A
+não fecha estrada. Toda remessa usa o tempo de caminhão de cada par, com
+mínimo de 1 dia. A
 referência sorteia falha de 1% a 5% em cada rota. A falha alta sorteia
 de 41% a 100%. Os outros cenários deixam a porcentagem em 1.
 

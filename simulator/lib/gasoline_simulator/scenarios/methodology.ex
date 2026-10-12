@@ -3,7 +3,6 @@ defmodule GasolineSimulator.Scenarios.Methodology do
   alias GasolineSimulator.Data.Repository
   alias GasolineSimulator.Refineries.Distances
   alias GasolineSimulator.Scenarios.Export
-  alias GasolineSimulator.Models.Overrides
   alias GasolineSimulator.Models.Problem
   alias GasolineSimulator.Scenarios.Runner
   alias GasolineSimulator.Scenarios.YieldSampling
@@ -26,7 +25,7 @@ defmodule GasolineSimulator.Scenarios.Methodology do
         0.0,
         :top_pair
       ),
-      scenario("referencia", "Referência", :sample, 0.0, :all, :fixed, :none, :band),
+      scenario("referencia", "Referência", :sample, 0.0, :all, :fixed, :band),
       scenario("choque_demanda", "Choque de demanda", :sample, 15.0, :all),
       scenario("manutencao_escalonada", "Manutenção escalonada", :sample, 0.0, :staggered),
       scenario(
@@ -36,10 +35,9 @@ defmodule GasolineSimulator.Scenarios.Methodology do
         0.0,
         :all,
         :fixed,
-        :none,
         :high
       ),
-      scenario("remessa", "Remessa entre plantas", :sample, 0.0, :all, :fixed, :pair),
+      scenario("remessa", "Remessa entre plantas", :sample, 0.0, :all),
       scenario(
         "rotas_bloqueadas",
         "Rotas bloqueadas",
@@ -47,7 +45,6 @@ defmodule GasolineSimulator.Scenarios.Methodology do
         0.0,
         :all,
         :fixed,
-        :none,
         :none,
         :block
       ),
@@ -75,10 +72,9 @@ defmodule GasolineSimulator.Scenarios.Methodology do
     %{
       params: %{
         demand_adjustment_pct: scenario.demand_adjustment_pct,
-        transit_days: manifest_transit(scenario.transit),
+        transit_days: "par",
         failure_pct: failure_draw(scenario.failure)
       },
-      transit: runner_transit(scenario.transit),
       yields: yield_fun(scenario.yield_mode),
       alive_ids: alive_ids,
       burst: limits.burst,
@@ -135,7 +131,6 @@ defmodule GasolineSimulator.Scenarios.Methodology do
       alive_ids: instance.alive_ids,
       burst_utilization_ratio: instance.burst,
       sustainable_utilization_ratio: instance.sustainable,
-      transit: instance.transit,
       closed_roads: instance.closed_roads
     ]
   end
@@ -147,7 +142,6 @@ defmodule GasolineSimulator.Scenarios.Methodology do
          demand_adjustment_pct,
          availability,
          fut_mode \\ :fixed,
-         transit \\ :none,
          failure \\ :none,
          roads \\ :open
        ) do
@@ -158,17 +152,10 @@ defmodule GasolineSimulator.Scenarios.Methodology do
       demand_adjustment_pct: demand_adjustment_pct,
       availability: availability,
       fut_mode: fut_mode,
-      transit: transit,
       failure: failure,
       roads: roads
     }
   end
-
-  defp manifest_transit(:pair), do: "par"
-  defp manifest_transit(:none), do: Overrides.min_transit_days()
-
-  defp runner_transit(:pair), do: :pair
-  defp runner_transit(:none), do: {:fixed, Overrides.min_transit_days()}
 
   defp fut_limits(:fixed) do
     %{
