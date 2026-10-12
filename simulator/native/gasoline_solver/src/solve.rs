@@ -8,6 +8,7 @@ use good_lp::{
 };
 
 const DEFICIT_WEIGHT: f64 = 1.0;
+const EXCESS_WEIGHT: f64 = 1e-4;
 const UTILIZATION_WEIGHT: f64 = 1e-4;
 
 struct FacilityVars<'a> {
@@ -31,11 +32,12 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
     }
 
     let deficit = vars.add(variable().min(0.0));
-    let ending_inventory = vars.add(variable().min(0.0));
+    let excess = vars.add(variable().min(0.0));
 
     let mut production_expr = Expression::with_capacity(facility_vars.len());
     let mut objective = Expression::with_capacity(facility_vars.len() + 1);
     objective.add_mul(DEFICIT_WEIGHT, deficit);
+    objective.add_mul(EXCESS_WEIGHT, excess);
     for fv in &facility_vars {
         production_expr.add_mul(1.0, fv.allocation);
         if fv.facility.capacity > 0.0 {
@@ -51,10 +53,8 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
         ));
         constraints.push(constraint!(fv.allocation >= fv.active * fv.facility.floor));
     }
-    let balance_lhs = production_expr + deficit - ending_inventory;
-    constraints.push(constraint!(
-        balance_lhs == (input.demand - input.initial_inventory)
-    ));
+    let balance_lhs = production_expr + deficit + input.landed - excess;
+    constraints.push(constraint!(balance_lhs == input.demand));
 
     let solution = vars
         .minimise(objective)
@@ -72,14 +72,14 @@ pub fn solve(input: &SolverInput, time_limit_secs: f64) -> Result<SolverOutput, 
 
     let production: f64 = facilities.iter().map(|result| result.allocated).sum();
     let deficit_value = solution.value(deficit).max(0.0);
-    let ending_inventory_value = solution.value(ending_inventory).max(0.0);
+    let excess_value = solution.value(excess).max(0.0);
     let served_demand = input.demand - deficit_value;
     let coverage = served_demand / input.demand;
 
     Ok(SolverOutput {
         demand: input.demand,
-        starting_inventory: input.initial_inventory,
-        ending_inventory: ending_inventory_value,
+        landed: input.landed,
+        excess: excess_value,
         production,
         served_demand,
         deficit: deficit_value,

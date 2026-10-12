@@ -2,6 +2,7 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
   use GenServer
 
   alias GasolineSimulator.Models.Plan
+  alias GasolineSimulator.Refineries.DeliverySupervisor
   alias GasolineSimulator.Refineries.Supervisor, as: PlantSupervisor
   alias GasolineSimulator.Scenarios.Runner
 
@@ -29,6 +30,10 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
 
   def plant_statuses(server \\ __MODULE__) do
     GenServer.call(server, :plant_statuses)
+  end
+
+  def deliveries(server \\ __MODULE__) do
+    GenServer.call(server, :deliveries)
   end
 
   def subscribe do
@@ -93,6 +98,10 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
     {:reply, plant_cards(state.plant_progress), state}
   end
 
+  def handle_call(:deliveries, _from, state) do
+    {:reply, DeliverySupervisor.statuses(), state}
+  end
+
   @impl true
   def handle_cast({:day_progress, day}, state) do
     {:noreply, publish_progress(state, accumulate_progress(state.plant_progress, day))}
@@ -143,15 +152,23 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
   end
 
   defp accumulate_progress(progress, day) do
+    stocks = Map.get(day, :stock_by_id, %{})
     zeroed = Map.new(progress, fn {id, stats} -> {id, %{stats | fut_pct: 0.0}} end)
 
-    Enum.reduce(day.refineries, zeroed, fn refinery, acc ->
-      prev = Map.get(acc, refinery.id, %{fut_pct: 0.0, produced_m3: 0.0})
+    progressed =
+      Enum.reduce(day.refineries, zeroed, fn refinery, acc ->
+        prev = Map.get(acc, refinery.id, %{fut_pct: 0.0, produced_m3: 0.0, stock_m3: 0.0})
 
-      Map.put(acc, refinery.id, %{
-        fut_pct: refinery.fut_pct,
-        produced_m3: prev.produced_m3 + refinery.allocated_m3
-      })
+        Map.put(acc, refinery.id, %{
+          fut_pct: refinery.fut_pct,
+          produced_m3: prev.produced_m3 + refinery.allocated_m3,
+          stock_m3: prev.stock_m3
+        })
+      end)
+
+    Enum.reduce(stocks, progressed, fn {id, stock}, acc ->
+      prev = Map.get(acc, id, %{fut_pct: 0.0, produced_m3: 0.0, stock_m3: 0.0})
+      Map.put(acc, id, Map.put(prev, :stock_m3, stock))
     end)
   end
 
@@ -169,6 +186,7 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
       plant
       |> Map.put(:fut_pct, if(plant.up, do: stats && stats.fut_pct, else: 0.0))
       |> Map.put(:produced_m3, stats && stats.produced_m3)
+      |> Map.put(:stock_m3, if(plant.up, do: stats && stats.stock_m3, else: 0.0) || 0.0)
     end)
   end
 

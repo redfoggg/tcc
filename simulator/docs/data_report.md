@@ -12,6 +12,9 @@ Conversões e limitações: `docs/data_transformations.md`.
 | Vendas de combustíveis | `https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/arquivos/vdpb/vendas-derivados-petroleo-e-etanol/vendas-combustiveis-m3-1990-2025.csv` |
 | Capacidade de refino (Anuário 2026, t2-35) | `https://www.gov.br/anp/pt-br/centrais-de-conteudo/publicacoes/anuario-estatistico/arquivos-anuario-estatistico-2026/secao-2/t2-35.xlsx` |
 
+O que a ANP chama de outras cargas, e como o modelo usa esse volume, está
+em `docs/other_charges.md`.
+
 Os quatro arquivos foram baixados uma vez e filtrados para 2025. Os brutos
 de processamento e de produção por refinaria ficam em `data/original/`.
 `data/scripts/download_anp_sources.py` só baixa de novo para lá. Não
@@ -27,16 +30,18 @@ regenera os CSVs curados. Flags: `--force` e `--only`.
 | `anp_2025_derivative_yields_by_refinery_monthly.csv` | Calibração do intervalo de $R$ |
 | `historical_2025_summary.json` | Painel Histórico 2025 |
 
-O planejamento não lê o CSV de rendimentos derivados. O sorteio diário
-usa os rendimentos mensais válidos de cada refinaria, da produção de
-gasolina A e do processamento observado.
+O planejamento não lê o CSV de rendimentos derivados e não usa o
+rendimento sorteado. O sorteio entra na execução de cada planta, nos
+meses válidos, a partir da produção de gasolina A e do petróleo
+observado. Outras cargas reservam placa e entram
+no FUT. `data/scripts/curate_other_charges.py` grava esse corte.
 
 ## Categorias
 
 - Observado: processamento, produção de gasolina A e vendas de gasolina C
 - Derivado: proxy de demanda e capacidades em m³
 - Simulado: $R_{i,d}$
-- Hipotético: estoque inicial e ajuste de demanda
+- Hipotético: ajuste de demanda, dias de trânsito da remessa e porcentagem de falha das entregas
 
 Colunas `*_provenance` viajam com os CSVs. O `Repository` não revalida esse
 vocabulário.

@@ -1,7 +1,9 @@
 defmodule GasolineSimulatorWeb.DashboardLive do
   use GasolineSimulatorWeb, :live_view
 
+  alias GasolineSimulator.Data.Catalog
   alias GasolineSimulator.Data.Historical
+  alias GasolineSimulator.Refineries.Plant
   alias GasolineSimulator.Scenarios.Orchestrator
   alias GasolineSimulator.Scenarios.Study
 
@@ -17,10 +19,12 @@ defmodule GasolineSimulatorWeb.DashboardLive do
       |> assign(
         page_title: "Painel de alocação de gasolina A",
         historical: Historical.load(),
-        initial_inventory_m3: nil,
         demand_adjustment_pct: nil,
+        transit_days: 1,
+        failure_pct: %{},
         planned_run: nil,
         plants: Orchestrator.plant_statuses(),
+        deliveries: Orchestrator.deliveries(),
         study: Study.status()
       )
 
@@ -29,12 +33,14 @@ defmodule GasolineSimulatorWeb.DashboardLive do
 
   @impl true
   def handle_event("run_plan", params, socket) do
-    initial_inventory_m3 = params |> Map.get("initial_inventory_m3") |> parse_float_input()
     demand_adjustment_pct = params |> Map.get("demand_adjustment_pct") |> parse_float_input()
+    transit_days = params |> Map.get("transit_days") |> parse_int_input() || 1
+    failure_pct = params |> Map.get("failure_pct", %{}) |> Plant.failure_pct()
 
     controls = %{
-      initial_inventory_m3: initial_inventory_m3,
-      demand_adjustment_pct: demand_adjustment_pct
+      demand_adjustment_pct: demand_adjustment_pct,
+      transit_days: transit_days,
+      failure_pct: failure_pct
     }
 
     {:ok, planned_run} = Orchestrator.run_plan(controls)
@@ -42,8 +48,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
     {:noreply,
      assign(socket,
        planned_run: planned_run,
-       initial_inventory_m3: initial_inventory_m3,
-       demand_adjustment_pct: demand_adjustment_pct
+       demand_adjustment_pct: demand_adjustment_pct,
+       transit_days: transit_days,
+       failure_pct: failure_pct
      )}
   end
 
@@ -68,13 +75,17 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   @impl true
   def handle_info({:plan_updated, %{id: id} = planned_run}, socket) do
     case socket.assigns.planned_run do
-      %{id: ^id} -> {:noreply, assign(socket, planned_run: planned_run)}
-      _other -> {:noreply, socket}
+      %{id: ^id} ->
+        {:noreply,
+         assign(socket, planned_run: planned_run, deliveries: Orchestrator.deliveries())}
+
+      _other ->
+        {:noreply, socket}
     end
   end
 
   def handle_info({:plants_updated, plants}, socket) do
-    {:noreply, assign(socket, plants: plants)}
+    {:noreply, assign(socket, plants: plants, deliveries: Orchestrator.deliveries())}
   end
 
   def handle_info({:study_updated, study}, socket) do
@@ -87,6 +98,16 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   defp parse_float_input(value) do
     {number, ""} = Float.parse(value)
     number
+  end
+
+  defp parse_int_input(nil), do: nil
+  defp parse_int_input(""), do: nil
+
+  defp parse_int_input(value) do
+    case Integer.parse(to_string(value)) do
+      {number, ""} when number >= 1 -> number
+      _ -> nil
+    end
   end
 
   defp fmt(value, divisor \\ 1, places \\ 1) do
@@ -103,8 +124,12 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   defp operating_pct(%{fut_pct: nil}), do: "n/d"
   defp operating_pct(%{fut_pct: value}), do: "#{fut_pct(value)}%"
 
-  defp produced_m3(%{produced_m3: nil}), do: "n/d m³"
-  defp produced_m3(%{produced_m3: value}), do: "#{fmt(value, 1, 0)} m³"
+  defp produced_m3(plant), do: cubic_m3(plant.produced_m3)
+  defp stock_m3(plant), do: cubic_m3(plant.stock_m3)
+  defp cubic_m3(nil), do: "n/d m³"
+  defp cubic_m3(value), do: "#{fmt(value, 1, 0)} m³"
+
+  defp plant_stock_sum(plants), do: Enum.sum_by(plants, &(&1.stock_m3 || 0.0))
 
   defp signed(value, formatter) when value > 0, do: "+#{formatter.(value)}"
   defp signed(value, formatter), do: formatter.(value)
@@ -145,10 +170,15 @@ defmodule GasolineSimulatorWeb.DashboardLive do
             O Histórico 2025 mostra o registro curado pré-computado. O Planejado 2025
             sorteia o rendimento de gasolina A entre os meses válidos daquela
             refinaria em 2025. Se o valor seria 0, usa a média nacional. Em seguida
-            executa uma simulação de estoque e déficit de janeiro a dezembro. O
+            executa uma simulação de produção e déficit de janeiro a dezembro. O
             escopo tem 12 refinarias. LUBNOR fica de fora: não produz gasolina A.
-            Derrubar uma planta tira o processo OTP dela. O Planejado realoca a
-            demanda nas que restam até Recuperar. O ano leva pelo menos 30 s.
+            Não há estoque nacional. Planta que produziu acima do plano envia
+            a sobra para a que ficou abaixo, em comboios de no máximo 30 m³,
+            com pelo menos 20 m³. Derrubar uma planta tira o processo OTP dela. O Planejado
+            realoca a demanda nas que restam até Recuperar. Processo que não
+            responde conta como planta ausente. O volume só entra na demanda
+            no dia em que chega. O prazo mínimo
+            é 1 dia. O ano leva pelo menos 30 s.
           </p>
         </div>
 
@@ -158,25 +188,12 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         </div>
 
         <.plants_panel plants={@plants} />
+        <.deliveries_panel deliveries={@deliveries} />
 
         <form phx-submit="run_plan" id="dashboard-planning-form" class="rounded border p-4 space-y-4">
           <h2 class="font-semibold">Controles do Planejado 2025</h2>
 
           <div class="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label for="dashboard-initial-inventory" class="text-sm font-medium">
-                Estoque inicial em 2025-01-01 (m³, opcional)
-              </label>
-              <input
-                type="number"
-                step="any"
-                name="initial_inventory_m3"
-                id="dashboard-initial-inventory"
-                value={@initial_inventory_m3}
-                class="input input-bordered"
-              />
-            </div>
-
             <div>
               <label for="dashboard-demand-adjustment" class="text-sm font-medium">
                 Ajuste de demanda (%, opcional)
@@ -190,6 +207,46 @@ defmodule GasolineSimulatorWeb.DashboardLive do
                 class="input input-bordered"
               />
             </div>
+
+            <div>
+              <label for="dashboard-transit-days" class="text-sm font-medium">
+                Dias de trânsito da remessa (mínimo 1)
+              </label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                name="transit_days"
+                id="dashboard-transit-days"
+                value={@transit_days}
+                class="input input-bordered"
+              />
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <h3 class="text-sm font-medium">Dificuldade logística por destino (%)</h3>
+            <p class="text-sm opacity-70">
+              O número vale para as entregas que vão para aquela refinaria.
+              O campo começa em 1. 0 mantém a remessa. 100 faz toda entrega para ela falhar e a carga se perde.
+              Depois de {Plant.consecutive_loss_limit()} perdas seguidas na mesma rota,
+              a origem espera {Plant.route_pause_days()} dias antes de tentar de novo.
+            </p>
+            <div class="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              <div :for={id <- Catalog.ids()}>
+                <label for={"dashboard-failure-#{id}"} class="text-sm font-medium">{id}</label>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="100"
+                  name={"failure_pct[#{id}]"}
+                  id={"dashboard-failure-#{id}"}
+                  value={Map.get(@failure_pct, id, Plant.default_failure_pct())}
+                  class="input input-bordered w-full"
+                />
+              </div>
+            </div>
           </div>
 
           <.button id="dashboard-run-plan">Executar Planejado 2025</.button>
@@ -200,8 +257,12 @@ defmodule GasolineSimulatorWeb.DashboardLive do
           <p class="text-sm opacity-70">
             Dez cenários, dez execuções cada. O botão grava um CSV por
             execução em data/studies. As plantas deste painel permanecem
-            como estão. Cada cenário traz o próprio estoque e a própria
-            demanda.
+            como estão. Cada cenário traz a própria demanda. O cenário de
+            remessa usa o tempo de caminhão de cada par. O ajuste de demanda,
+            os dias de trânsito e a porcentagem de falha do formulário não
+            entram na bateria. A referência sorteia de 1% a 5% de falha em
+            cada rota. A falha alta sorteia de 41% a 100%. Os demais cenários
+            deixam a porcentagem em 1.
           </p>
           <p id="dashboard-study-status" class="text-sm">{study_status(@study)}</p>
           <p
@@ -234,7 +295,11 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         Cada item é um GenServer. Ausente não entra no MILP do dia. Ao
         recuperar, a planta sobe 1 p.p. por dia a partir de 40%. Não
         volta a 100% no mesmo dia. O FUT e a gasolina A acumulada
-        atualizam a cada dia do Planejado.
+        atualizam a cada dia do Planejado. Estoque é a gasolina produzida
+        menos o que saiu em entrega. A soma não inclui o que está em trânsito.
+      </p>
+      <p id="dashboard-plant-stock-sum" class="text-sm font-mono tabular-nums">
+        Soma nas plantas {fmt(plant_stock_sum(@plants), 1, 0)} m³
       </p>
       <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <div
@@ -252,6 +317,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
             </p>
             <p id={"dashboard-plant-produced-#{plant.id}"} class="text-sm font-mono tabular-nums">
               Produzido {produced_m3(plant)}
+            </p>
+            <p id={"dashboard-plant-stock-#{plant.id}"} class="text-sm font-mono tabular-nums">
+              Estoque {stock_m3(plant)}
             </p>
           </div>
           <button
@@ -280,6 +348,35 @@ defmodule GasolineSimulatorWeb.DashboardLive do
     """
   end
 
+  attr :deliveries, :list, required: true
+
+  defp deliveries_panel(assigns) do
+    ~H"""
+    <div id="dashboard-deliveries" class="rounded border p-4 space-y-3">
+      <h2 class="font-semibold">Entregas a caminho</h2>
+      <p class="text-sm opacity-70">
+        Cada entrega é um processo a caminho. A falha logística acontece na
+        saída, pela porcentagem do destino. A carga perdida não aparece aqui.
+        Origem e destino são avisados e o volume some.
+      </p>
+      <p :if={@deliveries == []} class="text-sm opacity-60">Nenhuma entrega a caminho.</p>
+      <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          :for={delivery <- @deliveries}
+          id={"dashboard-delivery-#{delivery.id}"}
+          class="rounded border px-3 py-3"
+        >
+          <div class="min-w-0 space-y-1">
+            <p class="font-medium">{delivery.origin_id} → {delivery.destination_id}</p>
+            <p class="text-xs opacity-60">Chega em {delivery.arrival}</p>
+            <p class="text-sm font-mono tabular-nums">{fmt(delivery.volume_m3, 1, 1)} m³</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   attr :historical, :map, required: true
 
   defp historical_panel(assigns) do
@@ -295,8 +392,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         <h2 class="text-xl font-semibold">Histórico 2025</h2>
         <p class="text-sm leading-5 opacity-70">
           Artefato curado estático das 12 refinarias do catálogo. LUBNOR
-          não entra: não produz gasolina A. O FUT Total usa o processamento
-          de petróleo observado e a capacidade bruta.
+          não entra: não produz gasolina A. O FUT Total usa a carga de
+          destilação atmosférica observada (petróleo e outras cargas)
+          sobre a capacidade bruta.
         </p>
       </div>
       <div class="grid gap-x-10 gap-y-4 border-b border-base-300 px-6 py-6 sm:grid-cols-2">
@@ -392,8 +490,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
       </div>
       <p class="border-b border-base-300 px-6 py-3 text-sm opacity-70">
         O solver decide cada dia de 2025. Cada refinaria pode ir a 100% de
-        FUT. Depois do pico o teto só desce até 90% e trava o tempo do
-        excesso acima de 90%. O painel agrega esses dias em mês e ano. Cada
+        FUT. Depois do pico o teto só desce até a trava de 94% e fica o
+        tempo do excesso acima de 94%. O painel agrega esses dias em mês
+        e ano. Cada
         execução sorteia o rendimento diário entre os meses válidos daquela
         refinaria em 2025. Valor 0 sobe para a média nacional.
       </p>
@@ -439,14 +538,19 @@ defmodule GasolineSimulatorWeb.DashboardLive do
           />
           <.metric label="Déficit" value={annual_volume(@annual.deficit_m3)} unit="Mm³" />
           <.metric
-            label="Estoque inicial"
-            value={annual_volume(@annual.starting_inventory_m3)}
+            label="Chegadas"
+            value={annual_volume(@annual.landed_m3)}
             unit="Mm³"
           />
           <.metric
-            label="Estoque final"
-            value={annual_volume(@annual.ending_inventory_m3)}
+            label="Excedente"
+            value={annual_volume(@annual.excess_m3)}
             unit="Mm³"
+          />
+          <.metric
+            label="Estoque nas plantas"
+            value={annual_volume(@annual.plant_stock_m3)}
+            unit="Mm³ no fim do ano"
           />
           <.metric
             label="Cobertura anual"

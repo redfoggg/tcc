@@ -36,11 +36,14 @@ também não entra.
 ## Rendimento simulado
 
 O sorteio de $R_{i,d}$ usa os rendimentos mensais da própria refinaria em
-2025. A produção publicada não é alterada. Meses sem petróleo processado,
-ou com A/petróleo $> 1$, ficam de fora da lista. O dia sorteia um desses
-valores, com reposição. Sorteio $0$ (ou lista vazia) vira a média nacional
-ANP do ano, a mesma coluna `national_avg_gasoline_a_yield_used`. Zero
-histórico é mercado, não restrição de processo.
+2025. A produção publicada não é alterada. O denominador é petróleo
+nacional mais importado. Outras cargas não entram nessa razão. Meses sem
+petróleo processado, ou com A/petróleo $> 1$, ficam de fora da lista. O
+dia sorteia um desses valores, com reposição. Sorteio $0$ (ou lista vazia)
+vira a média nacional ANP do ano, a coluna
+`national_avg_gasoline_a_yield_used`, agora gasolina A do parque dividida
+pelo petróleo do parque. Zero histórico é mercado, não restrição de
+processo.
 
 $$
 R_{i,d} \in \{R_{i,\text{mês}}: \text{mês válido de } i\}
@@ -49,20 +52,29 @@ $$
 A demanda e as capacidades diárias são o valor mensal dividido pelos dias
 do mês.
 
-A razão nacional 2025 no escopo das 12 refinarias é `0,251151`. O CSV de
+A razão nacional 2025 no escopo das 12 refinarias, gasolina A sobre
+petróleo, é `0,256572`. Sobre a carga atmosférica inteira ela era
+`0,251151`. O CSV de
 rendimentos derivados só documenta a variação histórica mensal por
 produto. Não entra no sorteio.
 
 ## Histórico 2025
 
-`historical_2025_summary.json` traz produção observada, demanda-alvo e saldo
-`produção - demanda`. Não reconstrói estoque. FUT Total:
+`historical_2025_summary.json` traz produção observada, demanda-alvo, saldo
+`produção - demanda`, petróleo e outras cargas. Não reconstrói estoque.
+FUT Total:
 
 $$
-\text{FUT} = 100 \times \frac{\sum \text{processamento\_obs}}{\sum K^P}
+\text{FUT} = 100 \times \frac{\sum (\text{petróleo}+\text{outras cargas})}{\sum K^P}
 $$
 
-mensal e anual, sobre as 12 refinarias. REPAR em 2025-02 fica com FUT
+mensal e anual, sobre as 12 refinarias. Esse é o FUT da Petrobras:
+toda a carga das unidades de destilação dividida pela capacidade de
+referência. O numerador observado já era a soma das três matérias-primas
+da série da ANP (petróleo nacional, petróleo importado e outras cargas),
+então o percentual do histórico permanece. O FUE que a ANP publica é
+outro indicador. Fontes e o corte: `docs/other_charges.md`.
+REPAR em 2025-02 fica com FUT
 individual 100,2535% (954.411 m³ processados contra 951.998,117 m³ de
 capacidade convertida).
 

@@ -7,6 +7,7 @@ defmodule GasolineSimulator.Models.Refinery do
     :simulated_yield,
     :capacity_m3,
     :processing_capacity_m3,
+    :other_charges_m3,
     :floor_m3
   ]
 
@@ -17,6 +18,7 @@ defmodule GasolineSimulator.Models.Refinery do
           simulated_yield: float(),
           capacity_m3: float(),
           processing_capacity_m3: float() | nil,
+          other_charges_m3: float() | nil,
           floor_m3: float()
         }
 end

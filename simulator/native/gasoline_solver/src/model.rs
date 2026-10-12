@@ -10,7 +10,7 @@ pub struct FacilityInput {
 #[derive(Debug, Clone, PartialEq, NifMap)]
 pub struct SolverInput {
     pub demand: f64,
-    pub initial_inventory: f64,
+    pub landed: f64,
     pub facilities: Vec<FacilityInput>,
 }
 
@@ -24,8 +24,8 @@ pub struct FacilityResult {
 #[derive(Debug, Clone, PartialEq, NifMap)]
 pub struct SolverOutput {
     pub demand: f64,
-    pub starting_inventory: f64,
-    pub ending_inventory: f64,
+    pub landed: f64,
+    pub excess: f64,
     pub production: f64,
     pub served_demand: f64,
     pub deficit: f64,

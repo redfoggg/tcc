@@ -12,7 +12,7 @@ defmodule GasolineSimulator.Solver do
 
   @type solver_input :: %{
           demand: number(),
-          initial_inventory: number(),
+          landed: number(),
           facilities: [facility_input()]
         }
 

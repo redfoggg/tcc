@@ -1,7 +1,10 @@
 defmodule GasolineSimulator.Scenarios.Methodology do
   alias GasolineSimulator.Data.Catalog
   alias GasolineSimulator.Data.Repository
+  alias GasolineSimulator.Refineries.Distances
   alias GasolineSimulator.Scenarios.Export
+  alias GasolineSimulator.Models.Overrides
+  alias GasolineSimulator.Models.Problem
   alias GasolineSimulator.Scenarios.Runner
   alias GasolineSimulator.Scenarios.YieldSampling
 
@@ -9,46 +12,52 @@ defmodule GasolineSimulator.Scenarios.Methodology do
   @productive_count 4
   @outage_count 2
   @outage_months 3
-  @opening_days 15
-  @regions [
-    {"sao_paulo", ["REPLAN", "REVAP", "RPBC", "RECAP"]},
-    {"sul", ["REPAR", "REFAP"]},
-    {"nordeste", ["REFMAT", "RNEST", "RPCC"]},
-    {"rio_minas", ["REDUC", "REGAP"]}
-  ]
+  @blocked_roads 3
 
   def runs, do: @runs
 
   def scenarios do
     [
-      scenario("rendimento_minimo", "Rendimento mínimo", :minimum, 0.0, :zero, :all),
+      scenario("rendimento_minimo", "Rendimento mínimo", :minimum, 0.0, :all),
       scenario(
         "paradas_produtivas",
         "Paradas das mais produtivas",
         :sample,
         0.0,
-        :zero,
         :top_pair
       ),
-      scenario("rendimento_maximo", "Rendimento máximo", :maximum, 0.0, :zero, :all),
-      scenario("referencia", "Referência", :sample, 0.0, :zero, :all),
-      scenario("choque_demanda", "Choque de demanda", :sample, 15.0, :zero, :all),
-      scenario("demanda_retraida", "Demanda retraída", :sample, -15.0, :zero, :all),
-      scenario("manutencao_escalonada", "Manutenção escalonada", :sample, 0.0, :zero, :staggered),
-      scenario("cluster_regional", "Cluster regional", :sample, 0.0, :zero, :region),
-      scenario("estoque_de_abertura", "Estoque de abertura", :sample, 0.0, :fifteen_days, :all),
-      scenario("campanha_estavel", "Campanha estável", :campaign, 0.0, :zero, :all)
+      scenario("referencia", "Referência", :sample, 0.0, :all, :fixed, :none, :band),
+      scenario("choque_demanda", "Choque de demanda", :sample, 15.0, :all),
+      scenario("manutencao_escalonada", "Manutenção escalonada", :sample, 0.0, :staggered),
+      scenario(
+        "falha_alta_remessa",
+        "Falha alta nas remessas",
+        :sample,
+        0.0,
+        :all,
+        :fixed,
+        :none,
+        :high
+      ),
+      scenario("remessa", "Remessa entre plantas", :sample, 0.0, :all, :fixed, :pair),
+      scenario(
+        "rotas_bloqueadas",
+        "Rotas bloqueadas",
+        :sample,
+        0.0,
+        :all,
+        :fixed,
+        :none,
+        :none,
+        :block
+      ),
+      scenario("campanha_estavel", "Campanha estável", :campaign, 0.0, :all),
+      scenario("mobilidade_fut", "Mobilidade do FUT", :sample, 0.0, :all, :mobile)
     ]
   end
 
   defp context do
-    year_data = Repository.load_year()
-    demands = Enum.map(year_data.demand_by_day, fn {_day, row} -> row.demand_m3 end)
-
-    %{
-      most_productive: most_productive(Repository.annual_gasoline_m3()),
-      mean_daily_demand_m3: Enum.sum(demands) / length(demands)
-    }
+    %{most_productive: most_productive(Repository.annual_gasoline_m3())}
   end
 
   defp most_productive(production) do
@@ -60,19 +69,28 @@ defmodule GasolineSimulator.Scenarios.Methodology do
 
   def build(scenario, context) do
     {alive_ids, availability} = availability(scenario.availability, context)
+    limits = fut_limits(scenario.fut_mode)
+    closure = road_closure(scenario.roads)
 
     %{
       params: %{
-        initial_inventory_m3: inventory(scenario.inventory, context),
-        demand_adjustment_pct: scenario.demand_adjustment_pct
+        demand_adjustment_pct: scenario.demand_adjustment_pct,
+        transit_days: manifest_transit(scenario.transit),
+        failure_pct: failure_draw(scenario.failure)
       },
+      transit: runner_transit(scenario.transit),
       yields: yield_fun(scenario.yield_mode),
       alive_ids: alive_ids,
+      burst: limits.burst,
+      sustainable: limits.sustainable,
+      closed_roads: closure.closed_roads,
       meta: %{
         yield_mode: Atom.to_string(scenario.yield_mode),
         availability: availability.label,
         offline_refineries: availability.offline_refineries,
-        offline_months: availability.offline_months
+        offline_months: availability.offline_months,
+        fut_lock: limits.sustainable,
+        note: closure.note
       }
     }
   end
@@ -114,29 +132,89 @@ defmodule GasolineSimulator.Scenarios.Methodology do
     [
       min_year_ms: 0,
       yields: instance.yields,
-      alive_ids: instance.alive_ids
+      alive_ids: instance.alive_ids,
+      burst_utilization_ratio: instance.burst,
+      sustainable_utilization_ratio: instance.sustainable,
+      transit: instance.transit,
+      closed_roads: instance.closed_roads
     ]
   end
 
-  defp scenario(id, name, yield_mode, demand_adjustment_pct, inventory, availability) do
+  defp scenario(
+         id,
+         name,
+         yield_mode,
+         demand_adjustment_pct,
+         availability,
+         fut_mode \\ :fixed,
+         transit \\ :none,
+         failure \\ :none,
+         roads \\ :open
+       ) do
     %{
       id: id,
       name: name,
       yield_mode: yield_mode,
       demand_adjustment_pct: demand_adjustment_pct,
-      inventory: inventory,
-      availability: availability
+      availability: availability,
+      fut_mode: fut_mode,
+      transit: transit,
+      failure: failure,
+      roads: roads
     }
+  end
+
+  defp manifest_transit(:pair), do: "par"
+  defp manifest_transit(:none), do: Overrides.min_transit_days()
+
+  defp runner_transit(:pair), do: :pair
+  defp runner_transit(:none), do: {:fixed, Overrides.min_transit_days()}
+
+  defp fut_limits(:fixed) do
+    %{
+      burst: Problem.burst_utilization_ratio(),
+      sustainable: Problem.sustainable_utilization_ratio()
+    }
+  end
+
+  defp fut_limits(:mobile) do
+    %{
+      burst: Problem.burst_utilization_ratio(),
+      sustainable: Enum.random([0.92, 0.93, 0.94])
+    }
+  end
+
+  defp failure_draw(:none), do: %{}
+  defp failure_draw(:band), do: road_rates(1, 5)
+  defp failure_draw(:high), do: road_rates(41, 100)
+
+  defp road_rates(min_pct, max_pct) do
+    Map.new(Distances.pairs(), fn pair -> {pair, Enum.random(min_pct..max_pct)} end)
+  end
+
+  defp road_closure(:open), do: %{closed_roads: fn _day -> [] end, note: ""}
+
+  defp road_closure(:block) do
+    pairs = Distances.pairs() |> Enum.take_random(@blocked_roads) |> Enum.sort()
+    start = Enum.random(1..11)
+    months = [start, start + 1]
+
+    %{
+      closed_roads: fn day ->
+        if day.month in months, do: pairs, else: []
+      end,
+      note: road_note(pairs, months)
+    }
+  end
+
+  defp road_note(pairs, months) do
+    listed = Enum.map_join(pairs, " ", &Distances.pair_key/1)
+    "rotas #{listed} meses #{Enum.join(months, "|")}"
   end
 
   defp yield_fun(:sample), do: &YieldSampling.draw/1
   defp yield_fun(:campaign), do: &YieldSampling.campaign/1
   defp yield_fun(:minimum), do: fn data -> YieldSampling.bound(data, :min) end
-  defp yield_fun(:maximum), do: fn data -> YieldSampling.bound(data, :max) end
-
-  defp inventory(:zero, _context), do: 0.0
-
-  defp inventory(:fifteen_days, context), do: @opening_days * context.mean_daily_demand_m3
 
   defp availability(:all, _context) do
     {fn _day -> Catalog.ids() end, blank_availability("all")}
@@ -178,20 +256,6 @@ defmodule GasolineSimulator.Scenarios.Methodology do
        label: "staggered",
        offline_refineries: label,
        offline_months: "1|2|3|4|5|6|7|8|9|10|11|12"
-     }}
-  end
-
-  defp availability(:region, _context) do
-    {region, ids} = Enum.random(@regions)
-    ids = Enum.sort(ids)
-    start = Enum.random(1..11)
-    months = [start, start + 1]
-
-    {month_block(ids, months),
-     %{
-       label: "region:#{region}",
-       offline_refineries: Enum.join(ids, "|"),
-       offline_months: Enum.join(months, "|")
      }}
   end
 

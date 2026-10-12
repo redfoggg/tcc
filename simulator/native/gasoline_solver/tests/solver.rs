@@ -11,10 +11,10 @@ fn facility(id: &str, capacity: f64, floor: f64) -> FacilityInput {
     }
 }
 
-fn input(demand: f64, inventory: f64, facilities: Vec<FacilityInput>) -> SolverInput {
+fn input(demand: f64, landed: f64, facilities: Vec<FacilityInput>) -> SolverInput {
     SolverInput {
         demand,
-        initial_inventory: inventory,
+        landed,
         facilities,
     }
 }
@@ -43,7 +43,7 @@ fn respects_operating_floor() {
     let output = solve(&input(10.0, 0.0, vec![facility("T1", 50.0, 30.0)]), LIMIT).unwrap();
 
     assert!((output.production - 30.0).abs() < EPS);
-    assert!((output.ending_inventory - 20.0).abs() < EPS);
+    assert!((output.excess - 20.0).abs() < EPS);
     assert!(output.facilities[0].active);
 }
 
@@ -53,7 +53,7 @@ fn lowers_utilization_when_demand_is_below_the_safe_cap() {
 
     assert!(output.deficit.abs() < EPS);
     assert!((output.production - 40.0).abs() < EPS);
-    assert!(output.ending_inventory.abs() < EPS);
+    assert!(output.excess.abs() < EPS);
 }
 
 #[test]

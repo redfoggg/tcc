@@ -8,8 +8,9 @@ defmodule GasolineSimulator.Scenarios.Export do
     :status,
     :yield_mode,
     :demand_adjustment_pct,
-    :initial_inventory_m3,
+    :transit_days,
     :availability,
+    :fut_lock,
     :offline_refineries,
     :offline_months,
     :annual_demand_m3,
@@ -18,7 +19,9 @@ defmodule GasolineSimulator.Scenarios.Export do
     :annual_served_demand_m3,
     :annual_fut_pct,
     :annual_coverage,
-    :ending_inventory_m3,
+    :landed_m3,
+    :excess_m3,
+    :plant_stock_m3,
     :csv_path,
     :note
   ]
@@ -33,14 +36,16 @@ defmodule GasolineSimulator.Scenarios.Export do
     :simulated_yield,
     :allocated_m3,
     :petroleum_processed_m3,
+    :other_charges_m3,
     :processing_capacity_m3,
     :fut_pct,
     :active,
+    :stock_m3,
     :day_demand_m3,
     :day_production_m3,
     :day_deficit_m3,
-    :day_starting_inventory_m3,
-    :day_ending_inventory_m3,
+    :day_landed_m3,
+    :day_excess_m3,
     :day_total_fut_pct
   ]
 
@@ -96,9 +101,11 @@ defmodule GasolineSimulator.Scenarios.Export do
       simulated_yield: refinery.simulated_yield,
       allocated_m3: refinery.allocated_m3,
       petroleum_processed_m3: refinery.petroleum_processed_m3,
+      other_charges_m3: refinery.other_charges_m3,
       processing_capacity_m3: refinery.processing_capacity_m3,
       fut_pct: refinery.fut_pct,
-      active: flag(refinery.active)
+      active: flag(refinery.active),
+      stock_m3: stock_m3(day, refinery.id)
     })
   end
 
@@ -111,11 +118,15 @@ defmodule GasolineSimulator.Scenarios.Export do
       simulated_yield: yield,
       allocated_m3: 0.0,
       petroleum_processed_m3: 0.0,
+      other_charges_m3: 0.0,
       processing_capacity_m3: nil,
       fut_pct: nil,
-      active: 0
+      active: 0,
+      stock_m3: stock_m3(day, id)
     })
   end
+
+  defp stock_m3(day, id), do: Map.get(day.stock_by_id, id, 0.0)
 
   defp shared_row(scenario, run, day) do
     %{
@@ -125,8 +136,8 @@ defmodule GasolineSimulator.Scenarios.Export do
       day_demand_m3: day.demand_m3,
       day_production_m3: day.production_m3,
       day_deficit_m3: day.deficit_m3,
-      day_starting_inventory_m3: day.starting_inventory_m3,
-      day_ending_inventory_m3: day.ending_inventory_m3,
+      day_landed_m3: day.landed_m3,
+      day_excess_m3: day.excess_m3,
       day_total_fut_pct: day.total_fut_pct
     }
   end
@@ -143,9 +154,11 @@ defmodule GasolineSimulator.Scenarios.Export do
       annual_served_demand_m3: annual.served_demand_m3,
       annual_fut_pct: annual.total_fut_pct,
       annual_coverage: annual.coverage,
-      ending_inventory_m3: annual.ending_inventory_m3,
+      landed_m3: annual.landed_m3,
+      excess_m3: annual.excess_m3,
+      plant_stock_m3: annual.plant_stock_m3,
       csv_path: relative,
-      note: ""
+      note: instance.meta.note
     })
   end
 
@@ -159,11 +172,16 @@ defmodule GasolineSimulator.Scenarios.Export do
       annual_served_demand_m3: nil,
       annual_fut_pct: nil,
       annual_coverage: nil,
-      ending_inventory_m3: nil,
+      landed_m3: nil,
+      excess_m3: nil,
+      plant_stock_m3: nil,
       csv_path: "",
-      note: failure_note(reason)
+      note: join_note(instance.meta.note, failure_note(reason))
     })
   end
+
+  defp join_note("", reason), do: reason
+  defp join_note(draw, reason), do: draw <> " " <> reason
 
   defp base_manifest(scenario, run, instance) do
     %{
@@ -172,8 +190,9 @@ defmodule GasolineSimulator.Scenarios.Export do
       run: run,
       yield_mode: instance.meta.yield_mode,
       demand_adjustment_pct: instance.params.demand_adjustment_pct,
-      initial_inventory_m3: instance.params.initial_inventory_m3,
+      transit_days: instance.params.transit_days,
       availability: instance.meta.availability,
+      fut_lock: instance.meta.fut_lock,
       offline_refineries: instance.meta.offline_refineries,
       offline_months: instance.meta.offline_months
     }
@@ -202,8 +221,7 @@ defmodule GasolineSimulator.Scenarios.Export do
 
   defp line(columns, row) do
     columns
-    |> Enum.map(&cell(Map.get(row, &1)))
-    |> Enum.join(",")
+    |> Enum.map_join(",", &cell(Map.get(row, &1)))
     |> Kernel.<>("\n")
   end
 

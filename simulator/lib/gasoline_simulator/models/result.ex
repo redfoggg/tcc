@@ -7,16 +7,18 @@ defmodule GasolineSimulator.Models.Result do
     :balance_m3,
     :total_fut_pct,
     :total_petroleum_processed_m3,
+    :total_other_charges_m3,
     :total_processing_capacity_m3,
     :demand_m3,
-    :starting_inventory_m3,
-    :ending_inventory_m3,
+    :landed_m3,
+    :excess_m3,
     :production_m3,
     :served_demand_m3,
     :deficit_m3,
     :coverage,
     :reason,
-    refineries: []
+    refineries: [],
+    stock_by_id: %{}
   ]
 
   @type t :: %__MODULE__{
@@ -25,10 +27,11 @@ defmodule GasolineSimulator.Models.Result do
           balance_m3: float() | nil,
           total_fut_pct: float() | nil,
           total_petroleum_processed_m3: float() | nil,
+          total_other_charges_m3: float() | nil,
           total_processing_capacity_m3: float() | nil,
           demand_m3: float() | nil,
-          starting_inventory_m3: float() | nil,
-          ending_inventory_m3: float() | nil,
+          landed_m3: float() | nil,
+          excess_m3: float() | nil,
           production_m3: float() | nil,
           served_demand_m3: float() | nil,
           deficit_m3: float() | nil,
@@ -40,23 +43,34 @@ defmodule GasolineSimulator.Models.Result do
   @spec from_solver(Problem.t(), {:ok, map()} | {:error, {atom(), String.t()}}) :: t()
   def from_solver(%Problem{} = problem, {:ok, native_result}) do
     refineries = merge_refineries(problem, native_result.facilities)
-    total_petroleum_processed_m3 = Enum.sum(Enum.map(refineries, & &1.petroleum_processed_m3))
-    total_processing_capacity_m3 = Enum.sum(Enum.map(refineries, & &1.processing_capacity_m3))
+    production_m3 = Enum.sum_by(refineries, & &1.allocated_m3)
+    covered_m3 = production_m3 + problem.landed_m3
+    deficit_m3 = max(problem.demand_m3 - covered_m3, 0.0)
+    excess_m3 = max(covered_m3 - problem.demand_m3, 0.0)
+    served_demand_m3 = problem.demand_m3 - deficit_m3
+    total_petroleum_processed_m3 = Enum.sum_by(refineries, & &1.petroleum_processed_m3)
+    total_other_charges_m3 = Enum.sum_by(refineries, & &1.other_charges_m3)
+    total_processing_capacity_m3 = Enum.sum_by(refineries, & &1.processing_capacity_m3)
 
     %__MODULE__{
       status: :ok,
       month: problem.month,
-      balance_m3: native_result.production - native_result.demand,
-      total_fut_pct: total_fut_pct(total_petroleum_processed_m3, total_processing_capacity_m3),
+      balance_m3: production_m3 - problem.demand_m3,
+      total_fut_pct:
+        total_fut_pct(
+          total_petroleum_processed_m3 + total_other_charges_m3,
+          total_processing_capacity_m3
+        ),
       total_petroleum_processed_m3: total_petroleum_processed_m3,
+      total_other_charges_m3: total_other_charges_m3,
       total_processing_capacity_m3: total_processing_capacity_m3,
-      demand_m3: native_result.demand,
-      starting_inventory_m3: native_result.starting_inventory,
-      ending_inventory_m3: native_result.ending_inventory,
-      production_m3: native_result.production,
-      served_demand_m3: native_result.served_demand,
-      deficit_m3: native_result.deficit,
-      coverage: native_result.coverage,
+      demand_m3: problem.demand_m3,
+      landed_m3: problem.landed_m3,
+      excess_m3: excess_m3,
+      production_m3: production_m3,
+      served_demand_m3: served_demand_m3,
+      deficit_m3: deficit_m3,
+      coverage: coverage(served_demand_m3, problem.demand_m3),
       refineries: refineries
     }
   end
@@ -67,7 +81,7 @@ defmodule GasolineSimulator.Models.Result do
       month: problem.month,
       reason: reason,
       demand_m3: problem.demand_m3,
-      starting_inventory_m3: problem.initial_inventory_m3
+      landed_m3: problem.landed_m3
     }
   end
 
@@ -85,25 +99,28 @@ defmodule GasolineSimulator.Models.Result do
         :simulated_yield,
         :capacity_m3,
         :processing_capacity_m3,
+        :other_charges_m3,
         :floor_m3
       ])
       |> Map.merge(Map.take(facility, [:active]))
-      |> Map.put(:allocated_m3, facility.allocated)
-      |> Map.put(
-        :petroleum_processed_m3,
-        petroleum_processed(facility.allocated, refinery.simulated_yield)
-      )
+      |> Map.put(:petroleum_processed_m3, facility.allocated)
+      |> Map.put(:planned_m3, facility.allocated * problem.planning_yield)
+      |> Map.put(:allocated_m3, facility.allocated * refinery.simulated_yield)
       |> then(fn refinery_result ->
         Map.put(
           refinery_result,
           :fut_pct,
-          total_fut_pct(refinery_result.petroleum_processed_m3, refinery.processing_capacity_m3)
+          total_fut_pct(
+            refinery_result.petroleum_processed_m3 + refinery_result.other_charges_m3,
+            refinery.processing_capacity_m3
+          )
         )
       end)
     end)
   end
 
-  defp petroleum_processed(allocated, yield), do: allocated / yield
+  defp coverage(_served, demand) when demand <= 0.0, do: 0.0
+  defp coverage(served, demand), do: served / demand
 
   defp total_fut_pct(processed, capacity), do: processed / capacity * 100.0
 end

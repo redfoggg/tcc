@@ -82,7 +82,8 @@ defmodule GasolineSimulator.Data.Repository do
        Enum.map(Map.fetch!(monthly_refineries, date.month), fn refinery ->
          Map.merge(refinery, %{
            capacity_m3: refinery.capacity_m3 / days_in_month,
-           processing_capacity_m3: refinery.processing_capacity_m3 / days_in_month
+           processing_capacity_m3: refinery.processing_capacity_m3 / days_in_month,
+           other_charges_m3: refinery.other_charges_m3 / days_in_month
          })
        end)}
     end)
@@ -97,6 +98,7 @@ defmodule GasolineSimulator.Data.Repository do
       uf: catalog_entry.uf,
       capacity_m3: 0.0,
       processing_capacity_m3: parse_float(capacity_row["capacity_m3_month"]),
+      other_charges_m3: parse_float(capacity_row["other_charges_m3"]),
       observed_monthly_yields: Map.fetch!(monthly_yields, capacity_row["refinery_code"]),
       national_average_yield: national_average
     }
@@ -125,7 +127,7 @@ defmodule GasolineSimulator.Data.Repository do
     |> Map.new(fn {id, rows} ->
       yields =
         Enum.flat_map(rows, fn row ->
-          throughput = parse_float(row["utilized_throughput_m3"])
+          throughput = parse_float(row["petroleum_throughput_m3"])
           production = Map.fetch!(production_by_key, {id, row["month"]})
 
           if usable_for_yield?(production, throughput) do
