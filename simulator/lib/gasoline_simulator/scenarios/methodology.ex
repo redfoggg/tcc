@@ -231,7 +231,7 @@ defmodule GasolineSimulator.Scenarios.Methodology do
   defp monthly_demand(:flat), do: %{by_month: %{}, note: ""}
 
   defp monthly_demand(:swing) do
-    by_month = Map.new(1..12, fn month -> {month, Enum.random(-5..15)} end)
+    by_month = Map.new(1..12, fn month -> {month, Enum.random(-1..15)} end)
     listed = Enum.map_join(1..12, " ", fn month -> "#{month}:#{by_month[month]}" end)
     %{by_month: by_month, note: "demanda #{listed}"}
   end

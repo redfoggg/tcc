@@ -112,12 +112,12 @@ de falha fica em 1.
 
 ### 5. demanda_mensal
 
-Cada execução sorteia um inteiro de -5 a 15, inclusive, para cada mês
+Cada execução sorteia um inteiro de -1 a 15, inclusive, para cada mês
 civil. O mesmo valor vale em todos os dias daquele mês. A demanda pode
-cair até 5% ou subir até 15% em relação ao proxy curado. O sorteio não
+cair até 1% ou subir até 15% em relação ao proxy curado. O sorteio não
 se acumula de um mês para o outro. Plantas, rendimento e prazo seguem a
 referência. A porcentagem de falha fica em 1. O manifesto grava os doze
-valores na nota, no formato `demanda 1:-2 2:11`.
+valores na nota, no formato `demanda 1:-1 2:11`.
 
 ### 6. manutencao_escalonada
 
