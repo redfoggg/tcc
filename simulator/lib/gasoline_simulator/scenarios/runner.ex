@@ -196,7 +196,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
     problem =
       Problem.build(%{
         month: Repository.day_key(day),
-        demand_m3: adjusted_demand(ctx.overrides, demand),
+        demand_m3: adjusted_demand(ctx.overrides, day, demand),
         landed_m3: landed,
         planning_yield: planning_yield,
         refineries: refineries
@@ -234,8 +234,10 @@ defmodule GasolineSimulator.Scenarios.Runner do
     overrides
   end
 
-  defp adjusted_demand(%Overrides{demand_adjustment_pct: pct}, demand_m3),
-    do: demand_m3 * (1.0 + pct / 100.0)
+  defp adjusted_demand(%Overrides{} = overrides, day, demand_m3) do
+    pct = Map.get(overrides.demand_by_month, day.month, overrides.demand_adjustment_pct)
+    demand_m3 * (1.0 + pct / 100.0)
+  end
 
   defp months_from_days(days) do
     days

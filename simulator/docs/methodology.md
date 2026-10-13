@@ -18,7 +18,7 @@ sequência. O resultado vai para `data/studies/<timestamp>/`.
 Calendário de 2025, demanda curada, capacidade de processamento curada,
 as 12 refinarias do catálogo e a regra de FUT. O planejamento é
 nacional e usa a capacidade da placa. O piso de quem está no ar é o FUT
-aceitável: 94% no padrão, ou 92%, 93% ou 94% no cenário 10. O teto é
+aceitável: 94% no padrão. No cenário 10 o piso vai de 85% a 94%, um ponto por execução. O teto é
 100%. O HiGHS devolve o petróleo da campanha. No dia 1 a demanda entra
 dividida pela média nacional. Nos dias seguintes, pela gasolina realizada
 até ali sobre o petróleo processado até ali. O rendimento sorteado
@@ -38,7 +38,7 @@ Uma entrega que sai zera a contagem. A pausa não perde carga: a origem
 tenta a próxima planta com falta.
 O prazo de cada comboio é o tempo de caminhão da estrada, o teto de
 quilômetros / 60 / 24, com mínimo de 1 dia. Não há chegada no mesmo dia.
-O cenário 8 fecha
+`RPCC → RPBC` leva 3 dias e `RNEST → RPCC` leva 1 dia. O cenário 8 fecha
 três rotas por dois meses civis. Fora do bloco, nenhuma estrada fecha.
 Processo que não responde conta como planta ausente.
 
@@ -110,32 +110,29 @@ Rendimento, plantas no ar e o prazo de caminhão seguem a referência. A
 demanda fica 15% acima do proxy curado em todos os dias. A porcentagem
 de falha fica em 1.
 
-### 5. manutencao_escalonada
+### 5. demanda_mensal
+
+Cada execução sorteia um inteiro de -5 a 15, inclusive, para cada mês
+civil. O mesmo valor vale em todos os dias daquele mês. A demanda pode
+cair até 5% ou subir até 15% em relação ao proxy curado. O sorteio não
+se acumula de um mês para o outro. Plantas, rendimento e prazo seguem a
+referência. A porcentagem de falha fica em 1. O manifesto grava os doze
+valores na nota, no formato `demanda 1:-2 2:11`.
+
+### 6. manutencao_escalonada
 
 Cada execução sorteia uma ordem das 12 refinarias e associa uma a cada
 mês. Naquele mês a planta fica fora. Em qualquer dia há exatamente uma
 parada. O rendimento segue o sorteio diário. A porcentagem de falha fica
 em 1.
 
-### 6. falha_alta_remessa
+### 7. falha_alta_remessa
 
 Cada execução sorteia uma vez um inteiro de 41 a 100, inclusive, para
 cada rota sem direção. 70, 80 e 100 cabem no sorteio. A faixa de 1% a
 5% do controle não entra aqui. As doze plantas ficam no ar. O rendimento
 segue o sorteio diário. O prazo é o tempo de caminhão de cada par. A chave do mapa é
 a mesma da referência.
-
-### 7. remessa
-
-Igual à referência, menos a taxa de falha, que fica em 1. O prazo é o
-mesmo dos outros cenários: o tempo de caminhão de cada par, o teto de
-quilômetros / 60 / 24, com mínimo de 1 dia. Não há chegada no mesmo dia.
-A volta usa o mesmo prazo. Se a origem tenta outra planta, o prazo passa
-a ser o daquele par.
-
-`RPCC → RPBC` leva 3 dias (49,5 horas). `RNEST → RPCC` leva 1 dia (8,3
-horas). Trechos curtos de São Paulo também ficam em 1 dia. O manifesto
-grava `par` em `transit_days`.
 
 ### 8. rotas_bloqueadas
 
@@ -158,9 +155,15 @@ Na referência, o rendimento muda todo dia. Aqui a campanha da planta
 
 ### 10. mobilidade_fut
 
-Igual à referência, menos a taxa de falha, que fica em 1. A abertura
-continua em 100%. Cada execução sorteia a trava em 92%, 93% ou 94%. O
-manifesto grava o valor em `fut_lock`.
+As doze plantas ficam no ar. A falha logística fica em 1. O prazo é o
+tempo de caminhão. Uma campanha de rendimento é sorteada uma vez e
+repetida nas dez execuções: cada planta guarda o mesmo rendimento nos
+365 dias, e esse rendimento não muda de uma execução para outra.
+
+O piso de FUT muda com a execução. A execução 1 usa 85%. Cada execução
+seguinte sobe 1 ponto percentual, até 94% na execução 10. O teto continua
+100%. O plano pode usar a planta acima do piso, até esse teto, se a
+demanda pedir. O manifesto grava o piso em `fut_lock`.
 
 ## Arquivos
 
@@ -168,7 +171,8 @@ manifesto grava o valor em `fut_lock`.
 demanda, dias de trânsito (`par` em todos os cenários), disponibilidade,
 trava de FUT, plantas e meses fora, totais anuais, o caminho do CSV
 detalhado e a nota. No cenário 8 a nota traz as rotas fechadas e os meses.
-Parada de uma refinaria, um mês de cada vez, é o cenário 5.
+No cenário 5 a nota traz o ajuste de cada mês. Parada de uma refinaria,
+um mês de cada vez, é o cenário 6.
 
 O CSV da execução traz, por refinaria e dia, o rendimento usado, a
 alocação, o petróleo da campanha, as outras cargas, a capacidade, o FUT
