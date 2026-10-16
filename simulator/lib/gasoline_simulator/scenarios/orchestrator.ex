@@ -3,6 +3,7 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
 
   alias GasolineSimulator.Models.Plan
   alias GasolineSimulator.Refineries.DeliverySupervisor
+  alias GasolineSimulator.Refineries.Fleet
   alias GasolineSimulator.Refineries.Supervisor, as: PlantSupervisor
   alias GasolineSimulator.Scenarios.Runner
 
@@ -46,6 +47,7 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
      %{
        plans: %{},
        refs: %{},
+       fleets: %{},
        plant_progress: %{},
        task_supervisor:
          Keyword.get(opts, :task_supervisor, GasolineSimulator.Scenarios.TaskSupervisor),
@@ -63,6 +65,8 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
     runner_opts = [
       task_supervisor: state.task_supervisor,
       timeout: state.timeout,
+      observe_deliveries: true,
+      on_fleet: &GenServer.cast(pid, {:fleet_started, id, &1}),
       on_day: &GenServer.cast(pid, {:day_progress, &1})
     ]
 
@@ -82,10 +86,13 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
   end
 
   def handle_call({:disconnect_plant, id}, _from, state) do
+    Enum.each(Map.values(state.fleets), &Fleet.drop(&1, id))
     {:reply, PlantSupervisor.disconnect(id), zero_operating(state, id)}
   end
 
   def handle_call({:reconnect_plant, id}, _from, state) do
+    Enum.each(Map.values(state.fleets), &Fleet.restore(&1, id))
+
     case PlantSupervisor.reconnect(id) do
       {:ok, _pid} -> {:reply, :ok, zero_operating(state, id)}
       {:error, {:already_started, _pid}} -> {:reply, :ok, zero_operating(state, id)}
@@ -103,6 +110,14 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
   end
 
   @impl true
+  def handle_cast({:fleet_started, id, fleet}, state) do
+    if Map.has_key?(state.plans, id) and state.plans[id].status == :running do
+      {:noreply, put_in(state, [:fleets, id], fleet)}
+    else
+      {:noreply, state}
+    end
+  end
+
   def handle_cast({:day_progress, day}, state) do
     {:noreply, publish_progress(state, accumulate_progress(state.plant_progress, day))}
   end
@@ -123,7 +138,8 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
 
       {id, refs} ->
         Process.demonitor(ref, [:flush])
-        {plan, state} = update_plan(%{state | refs: refs}, id, status: status, result: result)
+        state = %{state | refs: refs, fleets: Map.delete(state.fleets, id)}
+        {plan, state} = update_plan(state, id, status: status, result: result)
         broadcast({:plan_updated, plan})
         state
     end

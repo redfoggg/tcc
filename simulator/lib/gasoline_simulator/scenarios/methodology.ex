@@ -1,5 +1,6 @@
 defmodule GasolineSimulator.Scenarios.Methodology do
   alias GasolineSimulator.Data.Catalog
+  alias GasolineSimulator.Data.Regions
   alias GasolineSimulator.Data.Repository
   alias GasolineSimulator.Refineries.Distances
   alias GasolineSimulator.Scenarios.Export
@@ -12,6 +13,9 @@ defmodule GasolineSimulator.Scenarios.Methodology do
   @outage_count 2
   @outage_months 3
   @blocked_roads 3
+  @corridor_weight 4
+  @supply_regions [:south, :southeast]
+  @short_regions [:north, :northeast]
 
   def runs, do: @runs
 
@@ -25,7 +29,7 @@ defmodule GasolineSimulator.Scenarios.Methodology do
         0.0,
         :top_pair
       ),
-      scenario("referencia", "Referência", :sample, 0.0, :all, :fixed, :band),
+      scenario("referencia", "Referência", :sample, 0.0, :all),
       scenario("choque_demanda", "Choque de demanda", :sample, 15.0, :all),
       scenario(
         "demanda_mensal",
@@ -34,7 +38,7 @@ defmodule GasolineSimulator.Scenarios.Methodology do
         0.0,
         :all,
         :fixed,
-        :none,
+        :band,
         :open,
         :swing
       ),
@@ -55,7 +59,7 @@ defmodule GasolineSimulator.Scenarios.Methodology do
         0.0,
         :all,
         :fixed,
-        :none,
+        :band,
         :block
       ),
       scenario("campanha_estavel", "Campanha estável", :campaign, 0.0, :all),
@@ -64,7 +68,10 @@ defmodule GasolineSimulator.Scenarios.Methodology do
   end
 
   defp context do
-    %{most_productive: most_productive(Repository.annual_gasoline_m3())}
+    %{
+      most_productive: most_productive(Repository.annual_gasoline_m3()),
+      route_rates: Map.new(1..@runs, &{&1, road_rates(1, 5)})
+    }
   end
 
   defp most_productive(production) do
@@ -84,7 +91,7 @@ defmodule GasolineSimulator.Scenarios.Methodology do
       params: %{
         demand_adjustment_pct: scenario.demand_adjustment_pct,
         transit_days: "par",
-        failure_pct: failure_draw(scenario.failure),
+        failure_pct: failure_draw(scenario.failure, context),
         demand_by_month: demand.by_month
       },
       yields: yields_for(scenario, context),
@@ -104,38 +111,58 @@ defmodule GasolineSimulator.Scenarios.Methodology do
   end
 
   def run(output_dir, on_progress) do
-    study_context = context()
     scenarios = scenarios()
+    scenario_count = length(scenarios)
 
     File.mkdir_p!(output_dir)
     Export.open_manifest(output_dir)
 
-    scenarios
-    |> Enum.with_index(1)
-    |> Enum.each(fn {scenario, index} ->
-      run_scenario(scenario, index, length(scenarios), study_context, output_dir, on_progress)
+    study_context = context()
+
+    jobs =
+      scenarios
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {scenario, index} -> jobs(scenario, index, study_context) end)
+
+    jobs
+    |> Task.async_stream(&execute/1,
+      max_concurrency: length(jobs),
+      ordered: true,
+      timeout: :infinity
+    )
+    |> Stream.with_index(1)
+    |> Enum.each(fn {{:ok, {job, result}}, completed} ->
+      Export.append_run(output_dir, job.scenario, job.run, job.instance, result)
+      on_progress.(progress(job, scenario_count, completed))
     end)
 
     :ok
   end
 
-  defp run_scenario(scenario, index, scenario_count, study_context, output_dir, on_progress) do
+  defp jobs(scenario, index, study_context) do
     shared_yields = shared_yields(scenario)
 
-    Enum.each(1..@runs, fn run ->
-      on_progress.(%{
-        scenario_id: scenario.id,
-        scenario_index: index,
-        scenario_count: scenario_count,
+    Enum.map(1..@runs, fn run ->
+      %{
+        scenario: scenario,
+        index: index,
         run: run,
-        runs: @runs,
-        completed: (index - 1) * @runs + (run - 1)
-      })
-
-      instance = build(scenario, run_context(study_context, run, shared_yields))
-      result = Runner.run(instance.params, runner_opts(instance))
-      Export.append_run(output_dir, scenario, run, instance, result)
+        instance: build(scenario, run_context(study_context, run, shared_yields))
+      }
     end)
+  end
+
+  defp execute(job), do: {job, Runner.run(job.instance.params, runner_opts(job.instance))}
+
+  defp progress(job, scenario_count, completed) do
+    %{
+      scenario_id: job.scenario.id,
+      scenario_index: job.index,
+      scenario_count: scenario_count,
+      run: job.run,
+      runs: @runs,
+      completed: completed
+    }
   end
 
   defp runner_opts(instance) do
@@ -156,7 +183,7 @@ defmodule GasolineSimulator.Scenarios.Methodology do
          demand_adjustment_pct,
          availability,
          fut_mode \\ :fixed,
-         failure \\ :none,
+         failure \\ :band,
          roads \\ :open,
          demand \\ :flat
        ) do
@@ -205,9 +232,8 @@ defmodule GasolineSimulator.Scenarios.Methodology do
     }
   end
 
-  defp failure_draw(:none), do: %{}
-  defp failure_draw(:band), do: road_rates(1, 5)
-  defp failure_draw(:high), do: road_rates(41, 100)
+  defp failure_draw(:band, context), do: Map.fetch!(context.route_rates, Map.get(context, :run, 1))
+  defp failure_draw(:high, _context), do: road_rates(41, 100)
 
   defp road_rates(min_pct, max_pct) do
     Map.new(Distances.pairs(), fn pair -> {pair, Enum.random(min_pct..max_pct)} end)
@@ -216,7 +242,11 @@ defmodule GasolineSimulator.Scenarios.Methodology do
   defp road_closure(:open), do: %{closed_roads: fn _day -> [] end, note: ""}
 
   defp road_closure(:block) do
-    pairs = Distances.pairs() |> Enum.take_random(@blocked_roads) |> Enum.sort()
+    pairs =
+      Distances.pairs()
+      |> Enum.sort_by(fn pair -> -:math.pow(:rand.uniform(), 1 / road_weight(pair)) end)
+      |> Enum.take(@blocked_roads)
+      |> Enum.sort()
     start = Enum.random(1..11)
     months = [start, start + 1]
 
@@ -226,6 +256,15 @@ defmodule GasolineSimulator.Scenarios.Methodology do
       end,
       note: road_note(pairs, months)
     }
+  end
+
+  defp road_weight({left, right}) do
+    if corridor?(Regions.of_plant(left), Regions.of_plant(right)), do: @corridor_weight, else: 1
+  end
+
+  defp corridor?(left, right) do
+    (left in @supply_regions and right in @short_regions) or
+      (right in @supply_regions and left in @short_regions)
   end
 
   defp monthly_demand(:flat), do: %{by_month: %{}, note: ""}

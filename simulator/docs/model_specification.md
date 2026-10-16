@@ -311,16 +311,29 @@ efetivo) publicado pela ANP é outro indicador.
 | Demanda atendida | $\min\!\left(\sum_d D_d,\ \sum_d \sum_i x_{i,d} - \Lambda\right)$ |
 | Déficit | Demanda-alvo menos demanda atendida |
 | Excedente | $\max\!\left(\sum_d \sum_i x_{i,d} - \Lambda - \sum_d D_d,\ 0\right)$ |
-| Cobertura anual | Demanda atendida dividida pela demanda-alvo |
+| Cobertura nacional | Demanda atendida dividida pela demanda-alvo |
+| Cobertura efetiva | $\sum_r M_r$ dividido pela demanda-alvo |
 | Chegadas | $\sum_d A_d$ |
 | Estoque nas plantas | Tanque de todas as plantas no fim de 31 de dezembro |
 
-O ano pergunta se a gasolina refinada cobriu a demanda do ano, não se
-ela estava na região certa em cada dia. A tabela por região mostra, no
-ano: a demanda $\sum_d D_{r,d}$, a produção $\sum_d X_{r,d}$, a demanda
-atendida $\min\!\left(\sum_d D_{r,d},\ \sum_d (X_{r,d} + A_{r,d} - B_{r,d})\right)$,
-o tanque no fim do ano e a cobertura, que é atendida sobre demanda. A
-tabela mensal soma os dias: produção, demanda, saldo e FUT.
+As duas coberturas olham o ano inteiro, não cada dia. A nacional
+pergunta se a gasolina refinada no país, menos a que se perdeu na
+estrada, cobriu a demanda do país. Ela não vê onde a gasolina ficou: se
+os comboios não saem, quase nada se perde e ela fica perto de 100%. A
+efetiva pergunta quanto da demanda de cada região foi servido:
+
+$$
+M_r = \min\!\left(\sum_d D_{r,d},\ \sum_d \left(X_{r,d} + A_{r,d} - B_{r,d}\right)\right)
+$$
+
+$M_r$ é a demanda atendida da região $r$ no ano: o menor entre a
+demanda dela e a gasolina que ela teve, que é a refinada nela mais a que
+chegou de comboio menos a que saiu. Gasolina parada no tanque de uma
+região não cobre a demanda de outra. A tabela por região mostra, no ano,
+a demanda $\sum_d D_{r,d}$, a produção $\sum_d X_{r,d}$, a atendida
+$M_r$, o tanque no fim do ano e a cobertura da região, $M_r$ sobre a
+demanda dela. A tabela mensal soma os dias: produção, demanda, saldo e
+FUT.
 
 O CSV de cada execução grava o fechamento diário: `day_deficit_m3` é
 $U_d$ e `day_excess_m3` é $\sum_r E^{\text{exe}}_{r,d}$. CSV é um arquivo

@@ -1,20 +1,20 @@
 import argparse
 import csv
 import json
-import math
-import statistics
-import sys
 from collections import defaultdict
 from pathlib import Path
+
+import numpy as np
+from scipy import stats
 
 ROOT = Path(__file__).resolve().parents[2]
 STUDIES = ROOT / "data" / "studies"
 HISTORICAL = ROOT / "data" / "curated" / "historical_2025_summary.json"
+PRODUCTION = ROOT / "data" / "curated" / "anp_2025_gasoline_a_production_by_refinery_monthly.csv"
 REFERENCE = "referencia"
 MEGA = 1_000_000.0
 CAP_FUT_PCT = 99.5
-DEFICIT_TOLERANCE_M3 = 1e-6
-FULL_COVERAGE = 1.0 - 1e-9
+CONFIDENCE = 0.95
 
 REGIONS = ("north", "northeast", "southeast", "south")
 REGION_LABELS = {"north": "Norte", "northeast": "Nordeste", "southeast": "Sudeste", "south": "Sul"}
@@ -30,13 +30,12 @@ UF_REGION = {
     **dict.fromkeys(["DF", "GO", "MT", "MS", "ES", "MG", "RJ", "SP"], "southeast"),
     **dict.fromkeys(["PR", "RS", "SC"], "south"),
 }
-T_95 = {
-    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365, 8: 2.306,
-    9: 2.262, 10: 2.228, 12: 2.179, 15: 2.131, 20: 2.086, 25: 2.060, 30: 2.042,
-}
+REGION_COVERAGE = {region: f"coverage_{region}" for region in REGIONS}
 
 ANNUAL = (
-    ("annual_coverage", "Cobertura anual", "%", 100.0),
+    ("annual_coverage", "Cobertura nacional", "%", 100.0),
+    ("annual_effective_coverage", "Cobertura efetiva", "%", 100.0),
+    *((REGION_COVERAGE[region], f"Cobertura efetiva {REGION_LABELS[region]}", "%", 100.0) for region in REGIONS),
     ("annual_deficit_m3", "Déficit anual", "Mm³", 1 / MEGA),
     ("annual_production_m3", "Produção", "Mm³", 1 / MEGA),
     ("annual_fut_pct", "FUT anual", "%", 1.0),
@@ -67,101 +66,61 @@ REGION = (
 )
 
 
-def number(value):
-    return float(value) if value not in (None, "") else None
-
-
-def ratio(numerator, denominator):
-    return numerator / denominator if denominator else 0.0
-
-
-def t_95(df):
-    if df < 1:
-        return float("nan")
-    if df > 30:
-        return 1.96
-    return T_95[max(key for key in T_95 if key <= df)]
+def constant(data):
+    return bool(np.allclose(data, data[0], rtol=1e-9, atol=0.0))
 
 
 def summary(values):
-    values = [value for value in values if value is not None and not math.isnan(value)]
-    if not values:
-        return None
-    n = len(values)
-    mean = statistics.fmean(values)
-    std = statistics.stdev(values) if n > 1 else 0.0
-    half = t_95(n - 1) * std / math.sqrt(n) if n > 1 else 0.0
+    data = np.asarray(values, dtype=float)
+    mean = float(np.mean(data))
+    if constant(data):
+        low = high = mean
+    else:
+        low, high = stats.t.interval(CONFIDENCE, data.size - 1, loc=mean, scale=stats.sem(data))
     return {
-        "n": n,
+        "n": data.size,
         "mean": mean,
-        "std": std,
-        "cv": ratio(std, abs(mean)),
-        "min": min(values),
-        "max": max(values),
-        "ci95_low": mean - half,
-        "ci95_high": mean + half,
+        "std": float(np.std(data, ddof=1)),
+        "cv": abs(float(stats.variation(data, ddof=1))) if mean else 0.0,
+        "min": float(np.min(data)),
+        "max": float(np.max(data)),
+        "ci95_low": float(low),
+        "ci95_high": float(high),
     }
 
 
 def difference(values, reference):
-    left, right = summary(values), summary(reference)
-    if not left or not right or left["n"] < 2 or right["n"] < 2:
-        return None
-    left_var = left["std"] ** 2 / left["n"]
-    right_var = right["std"] ** 2 / right["n"]
-    delta = left["mean"] - right["mean"]
-    spread = left_var + right_var
-    if spread == 0:
-        return {"delta": delta, "ci95_low": delta, "ci95_high": delta, "significant": delta != 0}
-    df = spread**2 / (left_var**2 / (left["n"] - 1) + right_var**2 / (right["n"] - 1))
-    half = t_95(math.floor(df)) * math.sqrt(spread)
+    left, right = np.asarray(values, dtype=float), np.asarray(reference, dtype=float)
+    delta = float(np.mean(left) - np.mean(right))
+    if constant(left) and constant(right):
+        return {"delta": delta, "ci95_low": delta, "ci95_high": delta, "p_value": float(delta == 0), "significant": delta != 0}
+    p_value, low, high = welch(left, right)
     return {
         "delta": delta,
-        "ci95_low": delta - half,
-        "ci95_high": delta + half,
-        "significant": abs(delta) > half,
+        "ci95_low": float(low),
+        "ci95_high": float(high),
+        "p_value": float(p_value),
+        "significant": bool(p_value < 1 - CONFIDENCE),
     }
 
 
-def percentile(values, q):
-    if not values:
-        return 0.0
-    ordered = sorted(values)
-    position = q * (len(ordered) - 1)
-    low, high = math.floor(position), math.ceil(position)
-    return ordered[low] + (ordered[high] - ordered[low]) * (position - low)
+def welch(left, right):
+    if constant(right):
+        test = stats.ttest_1samp(left, right[0])
+        interval = test.confidence_interval(CONFIDENCE)
+        return test.pvalue, interval.low - right[0], interval.high - right[0]
+    if constant(left):
+        test = stats.ttest_1samp(right, left[0])
+        interval = test.confidence_interval(CONFIDENCE)
+        return test.pvalue, left[0] - interval.high, left[0] - interval.low
+    test = stats.ttest_ind(left, right, equal_var=False)
+    interval = test.confidence_interval(CONFIDENCE)
+    return test.pvalue, interval.low, interval.high
 
 
-def longest_streak(deficits):
-    best = current = 0
-    for value in deficits:
-        current = current + 1 if value > DEFICIT_TOLERANCE_M3 else 0
-        best = max(best, current)
-    return best
-
-
-def study_dir(argument):
-    root = STUDIES.resolve()
-    if argument is None:
-        candidates = [path for path in root.iterdir() if (path / "manifest.csv").is_file()] if root.is_dir() else []
-        if not candidates:
-            sys.exit("Nenhuma bateria com manifest.csv em data/studies.")
-        return max(candidates, key=lambda path: path.stat().st_mtime)
-    path = Path(argument).resolve()
-    if root not in path.parents:
-        sys.exit("A pasta precisa estar dentro de data/studies.")
-    if not (path / "manifest.csv").is_file():
-        sys.exit("A pasta não tem manifest.csv.")
-    return path
-
-
-def detail_path(study, relative):
-    if not relative:
-        return None
-    path = (study / relative).resolve()
-    if study not in path.parents or not path.is_file():
-        return None
-    return path
+def longest_streak(short):
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], short.astype(int), [0]))))
+    return int((edges[1::2] - edges[::2]).max(initial=0))
 
 
 def read_csv(path):
@@ -169,50 +128,50 @@ def read_csv(path):
         return list(csv.DictReader(handle))
 
 
-def day_values(row):
-    return {key: number(row[f"day_{key}_m3"]) or 0.0 for key in ("demand", "production", "deficit")}
-
-
 def add_plant(plant, month, row):
     if row["in_model"] != "1":
         plant["offline_days"] += 1
         return
-    charge = (number(row["petroleum_processed_m3"]) or 0.0) + (number(row["other_charges_m3"]) or 0.0)
-    capacity = number(row["processing_capacity_m3"]) or 0.0
-    plant["gasoline_m3"] += number(row["allocated_m3"]) or 0.0
+    charge = float(row["petroleum_processed_m3"]) + float(row["other_charges_m3"])
+    capacity = float(row["processing_capacity_m3"])
+    plant["gasoline_m3"] += float(row["allocated_m3"])
     plant["charge_m3"] += charge
     plant["capacity_m3"] += capacity
-    plant["cap_days"] += 1 if (number(row["fut_pct"]) or 0.0) >= CAP_FUT_PCT else 0
+    plant["cap_days"] += float(row["fut_pct"]) >= CAP_FUT_PCT
     month["charge_m3"] += charge
     month["capacity_m3"] += capacity
 
 
-def scan_run(path):
+def run_metrics(path):
     days = {}
     months = defaultdict(lambda: defaultdict(float))
     plants = defaultdict(lambda: defaultdict(float))
-    ufs = {}
-    stock = {}
-    with path.open(newline="", encoding="utf-8") as handle:
-        for row in csv.DictReader(handle):
-            plant = row["refinery_id"]
-            days.setdefault(row["date"], day_values(row))
-            add_plant(plants[plant], months[row["date"][:7]], row)
-            ufs[plant] = row["uf"]
-            stock[plant] = number(row["stock_m3"]) or 0.0
-    for date, day in days.items():
-        months[date[:7]]["deficit_m3"] += day["deficit"]
-    return days, months, plants, ufs, stock
-
-
-def daily_metrics(days):
-    deficits = [days[date]["deficit"] for date in sorted(days)]
+    ufs, stock = {}, {}
+    for row in read_csv(path):
+        plant = row["refinery_id"]
+        days.setdefault(row["date"], (float(row["day_demand_m3"]), float(row["day_deficit_m3"])))
+        add_plant(plants[plant], months[row["date"][:7]], row)
+        ufs[plant] = row["uf"]
+        stock[plant] = float(row["stock_m3"])
+    for date, (_demand, deficit) in days.items():
+        months[date[:7]]["deficit_m3"] += deficit
+    deficits = np.array([days[date][1] for date in sorted(days)])
+    demand = sum(day[0] for day in days.values())
     return {
-        "deficit_days": sum(1 for value in deficits if value > DEFICIT_TOLERANCE_M3),
-        "max_deficit_m3": max(deficits, default=0.0),
-        "p95_deficit_m3": percentile(deficits, 0.95),
-        "longest_streak_days": longest_streak(deficits),
-        "deficit_sum_mm3": sum(deficits) / MEGA,
+        "daily": {
+            "deficit_days": int(np.count_nonzero(deficits > 0)),
+            "max_deficit_m3": float(np.max(deficits)),
+            "p95_deficit_m3": float(np.percentile(deficits, 95)),
+            "longest_streak_days": longest_streak(deficits > 0),
+            "deficit_sum_mm3": float(np.sum(deficits)) / MEGA,
+        },
+        "months": {
+            month: {"fut_pct": values["charge_m3"] / values["capacity_m3"] * 100, "deficit_mm3": values["deficit_m3"] / MEGA}
+            for month, values in months.items()
+        },
+        "plants": plant_metrics(plants),
+        "regions": region_metrics(plants, ufs, stock, demand),
+        "ufs": ufs,
     }
 
 
@@ -221,8 +180,8 @@ def plant_metrics(plants):
     return {
         plant: {
             "production_mm3": values["gasoline_m3"] / MEGA,
-            "share_pct": ratio(values["gasoline_m3"], total) * 100,
-            "fut_pct": ratio(values["charge_m3"], values["capacity_m3"]) * 100,
+            "share_pct": values["gasoline_m3"] / total * 100,
+            "fut_pct": values["charge_m3"] / values["capacity_m3"] * 100,
             "cap_days": values["cap_days"],
             "offline_days": values["offline_days"],
         }
@@ -230,99 +189,73 @@ def plant_metrics(plants):
     }
 
 
+def regional_demand(demand_m3):
+    population = sum(POPULATION.values())
+    return {region: demand_m3 * POPULATION[region] / population for region in REGIONS}
+
+
 def region_metrics(plants, ufs, stock, demand_m3):
     produced, held = defaultdict(float), defaultdict(float)
     for plant, values in plants.items():
-        region = UF_REGION.get(ufs.get(plant, ""))
-        if region:
-            produced[region] += values["gasoline_m3"]
-            held[region] += stock.get(plant, 0.0)
-    population = sum(POPULATION.values())
-    metrics = {}
-    for region in REGIONS:
-        demand = demand_m3 * POPULATION[region] / population
-        metrics[region] = {
-            "self_sufficiency_pct": ratio(produced[region], demand) * 100,
+        produced[UF_REGION[ufs[plant]]] += values["gasoline_m3"]
+        held[UF_REGION[ufs[plant]]] += stock[plant]
+    return {
+        region: {
+            "self_sufficiency_pct": produced[region] / demand * 100,
             "production_mm3": produced[region] / MEGA,
             "demand_mm3": demand / MEGA,
             "stock_mm3": held[region] / MEGA,
         }
-    return metrics
-
-
-def run_metrics(path):
-    days, months, plants, ufs, stock = scan_run(path)
-    demand = sum(day["demand"] for day in days.values())
-    return {
-        "daily": daily_metrics(days),
-        "months": {
-            month: {"fut_pct": ratio(values["charge_m3"], values["capacity_m3"]) * 100, "deficit_mm3": values["deficit_m3"] / MEGA}
-            for month, values in months.items()
-        },
-        "plants": plant_metrics(plants),
-        "regions": region_metrics(plants, ufs, stock, demand),
+        for region, demand in regional_demand(demand_m3).items()
     }
 
 
-def scaled(row, key, scale):
-    value = number(row.get(key))
-    return value * scale if value is not None else None
-
-
-def collect(study, manifest):
-    scenarios = {}
-    for scenario in dict.fromkeys(row["scenario_id"] for row in manifest):
-        runs = [row for row in manifest if row["scenario_id"] == scenario]
-        ok = [row for row in runs if row["status"] == "ok"]
-        paths = [detail_path(study, row["csv_path"]) for row in ok]
-        scenarios[scenario] = {
-            "name": runs[0]["scenario_name"],
-            "runs": len(runs),
-            "ok": ok,
-            "failed": [row for row in runs if row["status"] != "ok"],
-            "details": [run_metrics(path) for path in paths if path],
-        }
-    return scenarios
+def collect(study):
+    scenarios = defaultdict(lambda: {"rows": [], "details": []})
+    for row in read_csv(study / "manifest.csv"):
+        scenarios[row["scenario_id"]]["rows"].append(row)
+        scenarios[row["scenario_id"]]["details"].append(run_metrics(study / row["csv_path"]))
+    return dict(scenarios)
 
 
 def annual_values(scenario, key, scale):
-    return [scaled(row, key, scale) for row in scenario["ok"]]
+    return [float(row[key]) * scale for row in scenario["rows"]]
 
 
 def nested_values(scenario, section, item, key):
-    return [run[section][item][key] for run in scenario["details"] if item in run[section]]
+    return [run[section][item][key] for run in scenario["details"]]
 
 
-def stats_row(base, metric, unit, stats):
-    return {**base, "metric": metric, "unit": unit, **(stats or {})}
+def stats_row(base, metric, unit, values):
+    return {**base, "metric": metric, "unit": unit, **summary(values)}
 
 
 def annual_rows(scenarios):
     return [
-        stats_row({"scenario_id": scenario_id}, label, unit, summary(annual_values(scenario, key, scale)))
+        stats_row({"scenario_id": scenario_id}, label, unit, annual_values(scenario, key, scale))
         for scenario_id, scenario in scenarios.items()
         for key, label, unit, scale in ANNUAL
     ]
 
 
 def reference_rows(scenarios):
-    reference = scenarios.get(REFERENCE)
-    if not reference:
-        return []
-    rows = []
-    for scenario_id, scenario in scenarios.items():
-        if scenario_id == REFERENCE:
-            continue
-        for key, label, unit, scale in ANNUAL:
-            delta = difference(annual_values(scenario, key, scale), annual_values(reference, key, scale))
-            if delta:
-                rows.append({"scenario_id": scenario_id, "metric": label, "unit": unit, **delta})
-    return rows
+    reference = scenarios[REFERENCE]
+    return [
+        {
+            "scenario_id": scenario_id,
+            "metric": label,
+            "unit": unit,
+            **difference(annual_values(scenario, key, scale), annual_values(reference, key, scale)),
+        }
+        for scenario_id, scenario in scenarios.items()
+        if scenario_id != REFERENCE
+        for key, label, unit, scale in ANNUAL
+    ]
 
 
 def daily_rows(scenarios):
     return [
-        stats_row({"scenario_id": scenario_id}, label, unit, summary([run["daily"][key] for run in scenario["details"]]))
+        stats_row({"scenario_id": scenario_id}, label, unit, [run["daily"][key] for run in scenario["details"]])
         for scenario_id, scenario in scenarios.items()
         for key, label, unit in DAILY
     ]
@@ -331,50 +264,42 @@ def daily_rows(scenarios):
 def monthly_rows(scenarios):
     rows = []
     for scenario_id, scenario in scenarios.items():
-        months = sorted({month for run in scenario["details"] for month in run["months"]})
-        for month in months:
-            fut = summary(nested_values(scenario, "months", month, "fut_pct")) or {}
-            deficit = summary(nested_values(scenario, "months", month, "deficit_mm3")) or {}
+        for month in sorted(scenario["details"][0]["months"]):
+            fut = summary(nested_values(scenario, "months", month, "fut_pct"))
+            deficit = summary(nested_values(scenario, "months", month, "deficit_mm3"))
             rows.append({
                 "scenario_id": scenario_id,
                 "month": month,
-                "fut_pct_mean": fut.get("mean"),
-                "fut_pct_std": fut.get("std"),
-                "deficit_mm3_mean": deficit.get("mean"),
+                "fut_pct_mean": fut["mean"],
+                "fut_pct_std": fut["std"],
+                "deficit_mm3_mean": deficit["mean"],
             })
     return rows
 
 
 def entity_rows(scenarios, section, column, metrics):
-    rows = []
-    for scenario_id, scenario in scenarios.items():
-        items = sorted({item for run in scenario["details"] for item in run[section]})
-        for item in items:
-            for key, label, unit in metrics:
-                stats = summary(nested_values(scenario, section, item, key))
-                rows.append(stats_row({"scenario_id": scenario_id, column: item}, label, unit, stats))
-    return rows
+    return [
+        stats_row({"scenario_id": scenario_id, column: item}, label, unit, nested_values(scenario, section, item, key))
+        for scenario_id, scenario in scenarios.items()
+        for item in sorted(scenario["details"][0][section])
+        for key, label, unit in metrics
+    ]
 
 
 def write_csv(path, rows):
-    if not rows:
-        return
-    columns = list(dict.fromkeys(key for row in rows for key in row))
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns, lineterminator="\n")
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0]), lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
 
 def fmt(value, places=2):
-    if value is None or (isinstance(value, float) and math.isnan(value)):
-        return "n/d"
-    text = f"{value:,.{places}f}"
-    return text.replace(",", "_").replace(".", ",").replace("_", ".")
+    return f"{value:,.{places}f}".replace(",", "_").replace(".", ",").replace("_", ".")
 
 
-def mean_std(stats, places=2):
-    return f"{fmt(stats['mean'], places)} ± {fmt(stats['std'], places)}" if stats else "n/d"
+def mean_std(values, places=2):
+    result = summary(values)
+    return f"{fmt(result['mean'], places)} ± {fmt(result['std'], places)}"
 
 
 def table(headers, rows):
@@ -386,30 +311,51 @@ def table(headers, rows):
 def annual_section(scenarios):
     rows = []
     for scenario_id, scenario in scenarios.items():
-        coverage = summary(annual_values(scenario, "annual_coverage", 100.0))
-        full = sum(1 for row in scenario["ok"] if (number(row["annual_coverage"]) or 0.0) >= FULL_COVERAGE)
+        effective = summary(annual_values(scenario, "annual_effective_coverage", 100.0))
         rows.append([
             scenario_id,
-            f"{len(scenario['ok'])}/{scenario['runs']}",
-            mean_std(coverage),
-            f"{fmt(coverage['ci95_low'])} a {fmt(coverage['ci95_high'])}" if coverage else "n/d",
-            mean_std(summary(annual_values(scenario, "annual_deficit_m3", 1 / MEGA))),
-            mean_std(summary(annual_values(scenario, "annual_production_m3", 1 / MEGA))),
-            mean_std(summary(annual_values(scenario, "annual_fut_pct", 1.0)), 1),
-            mean_std(summary(annual_values(scenario, "lost_m3", 1 / MEGA)), 3),
-            f"{full}/{len(scenario['ok'])}",
+            len(scenario["rows"]),
+            mean_std(annual_values(scenario, "annual_coverage", 100.0)),
+            mean_std(annual_values(scenario, "annual_effective_coverage", 100.0)),
+            f"{fmt(effective['ci95_low'])} a {fmt(effective['ci95_high'])}",
+            mean_std(annual_values(scenario, "annual_deficit_m3", 1 / MEGA)),
+            mean_std(annual_values(scenario, "annual_production_m3", 1 / MEGA)),
+            mean_std(annual_values(scenario, "annual_fut_pct", 1.0), 1),
+            mean_std(annual_values(scenario, "lost_m3", 1 / MEGA), 3),
         ])
     headers = [
-        "Cenário", "Execuções ok", "Cobertura (%)", "IC 95% da cobertura", "Déficit (Mm³)",
-        "Produção (Mm³)", "FUT (%)", "Perdas (Mm³)", "Execuções com 100%",
+        "Cenário", "Execuções", "Cobertura nacional (%)", "Cobertura efetiva (%)",
+        "IC 95% da efetiva", "Déficit nacional (Mm³)", "Produção (Mm³)", "FUT (%)", "Perdas (Mm³)",
     ]
-    return ["## Resultado anual por cenário", "", "Média ± desvio padrão das execuções.", ""] + table(headers, rows)
+    intro = [
+        "## Resultado anual por cenário",
+        "",
+        "Média ± desvio padrão das execuções. A cobertura nacional compara a produção do ano, "
+        "menos as perdas no transporte, com a demanda do país. A cobertura efetiva soma o que "
+        "cada região teve no ano (refinação própria e chegadas, menos o que enviou), até a demanda "
+        "dela, e divide pela demanda do país. Gasolina parada numa região não cobre outra.",
+        "",
+    ]
+    return intro + table(headers, rows)
+
+
+def regional_coverage_section(scenarios):
+    rows = [
+        [scenario_id] + [mean_std(annual_values(scenario, REGION_COVERAGE[region], 100.0), 1) for region in REGIONS]
+        for scenario_id, scenario in scenarios.items()
+    ]
+    intro = [
+        "## Cobertura efetiva por região (%)",
+        "",
+        "Quanto da demanda de cada região foi servido no ano, com a refinação dela e as chegadas "
+        "de comboio. Média ± desvio padrão das execuções.",
+        "",
+    ]
+    return intro + table(["Cenário"] + [REGION_LABELS[region] for region in REGIONS], rows)
 
 
 def reference_section(scenarios):
-    reference = scenarios.get(REFERENCE)
-    if not reference:
-        return ["## Efeito contra a referência", "", "Sem o cenário `referencia` na bateria.", ""]
+    reference = scenarios[REFERENCE]
     rows = []
     for scenario_id, scenario in scenarios.items():
         if scenario_id == REFERENCE:
@@ -417,50 +363,110 @@ def reference_section(scenarios):
         cells = [scenario_id]
         for key, scale, places in (
             ("annual_coverage", 100.0, 2),
+            ("annual_effective_coverage", 100.0, 2),
             ("annual_deficit_m3", 1 / MEGA, 2),
             ("annual_production_m3", 1 / MEGA, 2),
             ("annual_fut_pct", 1.0, 1),
         ):
             delta = difference(annual_values(scenario, key, scale), annual_values(reference, key, scale))
-            cells.append(f"{fmt(delta['delta'], places)}{' *' if delta['significant'] else ''}" if delta else "n/d")
+            cells.append(f"{fmt(delta['delta'], places)}{' *' if delta['significant'] else ''}")
         rows.append(cells)
-    headers = ["Cenário", "Δ cobertura (p.p.)", "Δ déficit (Mm³)", "Δ produção (Mm³)", "Δ FUT (p.p.)"]
+    headers = [
+        "Cenário", "Δ cobertura nacional (p.p.)", "Δ cobertura efetiva (p.p.)",
+        "Δ déficit nacional (Mm³)", "Δ produção (Mm³)", "Δ FUT (p.p.)",
+    ]
     intro = [
         "## Efeito contra a referência",
         "",
-        "Δ é a média do cenário menos a média da referência. O asterisco marca diferença cujo "
-        "intervalo de confiança de 95% (teste de Welch) não inclui zero.",
+        "Δ é a média do cenário menos a média da referência. O asterisco marca p < 0,05 no teste t "
+        "de Welch, que compara médias com variâncias diferentes. O valor p e o intervalo de 95% da "
+        "diferença estão em `scenario_vs_reference.csv`.",
         "",
     ]
     return intro + table(headers, rows)
 
 
-def historical_section(scenarios):
-    reference = scenarios.get(REFERENCE)
-    if not reference or not HISTORICAL.is_file():
-        return []
-    annual = json.loads(HISTORICAL.read_text(encoding="utf-8"))["annual"]
+def historical_section(scenarios, historical):
+    reference = scenarios[REFERENCE]
     production = annual_values(reference, "annual_production_m3", 1 / MEGA)
     demand = annual_values(reference, "annual_demand_m3", 1 / MEGA)
-    balance = [p - d for p, d in zip(production, demand) if p is not None and d is not None]
     rows = [
-        ["Produção (Mm³)", fmt(annual["production_supplied_m3"] / MEGA), mean_std(summary(production))],
-        ["Demanda (Mm³)", fmt(annual["demand_target_m3"] / MEGA), mean_std(summary(demand))],
-        ["Saldo (Mm³)", fmt(annual["balance_m3"] / MEGA), mean_std(summary(balance))],
-        ["FUT (%)", fmt(annual["total_fut_pct"], 1), mean_std(summary(annual_values(reference, "annual_fut_pct", 1.0)), 1)],
+        ["Produção (Mm³)", fmt(historical["production_supplied_m3"] / MEGA), mean_std(production)],
+        ["Demanda (Mm³)", fmt(historical["demand_target_m3"] / MEGA), mean_std(demand)],
+        ["Saldo (Mm³)", fmt(historical["balance_m3"] / MEGA), mean_std(np.subtract(production, demand))],
+        ["FUT (%)", fmt(historical["total_fut_pct"], 1), mean_std(annual_values(reference, "annual_fut_pct", 1.0), 1)],
     ]
     intro = ["## Referência contra o Histórico 2025", "", "Saldo é produção menos demanda.", ""]
     return intro + table(["Indicador", "Histórico", "Referência"], rows)
 
 
+def historical_coverage_section(scenarios, historical):
+    reference = scenarios[REFERENCE]
+    region_of = {plant: UF_REGION[uf] for plant, uf in reference["details"][0]["ufs"].items()}
+    produced = defaultdict(float)
+    for row in read_csv(PRODUCTION):
+        produced[region_of[row["refinery_code"]]] += float(row["gasolina_a_m3"])
+    demand = historical["demand_target_m3"]
+    regions = regional_demand(demand)
+    national = min(demand, historical["production_supplied_m3"]) / demand * 100
+    isolated = sum(min(regions[region], produced[region]) for region in REGIONS) / demand * 100
+    coverage_rows = [
+        ["Cobertura nacional (%)", fmt(national), mean_std(annual_values(reference, "annual_coverage", 100.0))],
+        [
+            "Cobertura efetiva (%)",
+            f"{fmt(isolated)} a {fmt(national)}",
+            mean_std(annual_values(reference, "annual_effective_coverage", 100.0)),
+        ],
+    ]
+    region_rows = [
+        [
+            REGION_LABELS[region],
+            fmt(produced[region] / MEGA),
+            fmt(regions[region] / MEGA),
+            fmt(produced[region] / regions[region] * 100, 1),
+            mean_std(nested_values(reference, "regions", region, "self_sufficiency_pct"), 1),
+            mean_std(annual_values(reference, REGION_COVERAGE[region], 100.0), 1),
+        ]
+        for region in REGIONS
+    ]
+    intro = [
+        "## Cobertura do Histórico 2025 com as mesmas simplificações",
+        "",
+        "A demanda de cada região é a fatia populacional da demanda do país, pelo Censo 2022, com o "
+        "Centro-Oeste somado ao Sudeste, como no modelo. A cobertura nacional do Histórico é a produção "
+        "observada sobre a demanda, sem perdas, porque o Histórico não tem comboios. A parte que faltou foi "
+        "coberta por importação e estoque, que ficam fora do modelo. Os dados não dizem quanta gasolina "
+        "passou de uma região para outra, então a cobertura efetiva do Histórico é um intervalo. O menor "
+        "valor supõe que nenhuma região mandou gasolina para outra. O maior supõe que toda a sobra chegou "
+        "onde faltava, e por isso é igual à cobertura nacional.",
+        "",
+    ]
+    regional_intro = [
+        "Autossuficiência é a produção das refinarias da região dividida pela demanda dela. A cobertura "
+        "efetiva da referência inclui as chegadas de comboio.",
+        "",
+    ]
+    region_headers = [
+        "Região", "Produção histórica (Mm³)", "Demanda (Mm³)", "Autossuficiência histórica (%)",
+        "Autossuficiência na referência (%)", "Cobertura efetiva na referência (%)",
+    ]
+    return (
+        intro
+        + table(["Indicador", "Histórico", "Referência"], coverage_rows)
+        + regional_intro
+        + table(region_headers, region_rows)
+    )
+
+
 def daily_section(scenarios):
-    rows = []
-    for scenario_id, scenario in scenarios.items():
-        cells = [scenario_id]
-        for key, _label, _unit in DAILY:
-            places = 3 if key == "deficit_sum_mm3" else 0
-            cells.append(mean_std(summary([run["daily"][key] for run in scenario["details"]]), places))
-        rows.append(cells)
+    rows = [
+        [scenario_id]
+        + [
+            mean_std([run["daily"][key] for run in scenario["details"]], 3 if key == "deficit_sum_mm3" else 0)
+            for key, _label, _unit in DAILY
+        ]
+        for scenario_id, scenario in scenarios.items()
+    ]
     headers = [
         "Cenário", "Dias com falta", "Maior falta diária (m³)", "Falta no percentil 95 (m³)",
         "Maior sequência (dias)", "Falta diária somada (Mm³)",
@@ -476,16 +482,16 @@ def daily_section(scenarios):
 
 
 def monthly_section(scenarios, monthly):
+    by_key = {(row["scenario_id"], row["month"]): row["fut_pct_mean"] for row in monthly}
     months = sorted({row["month"] for row in monthly})
-    by_key = {(row["scenario_id"], row["month"]): row for row in monthly}
-    rows = [[month] + [fmt(by_key.get((scenario_id, month), {}).get("fut_pct_mean"), 1) for scenario_id in scenarios] for month in months]
+    rows = [[month] + [fmt(by_key[(scenario_id, month)], 1) for scenario_id in scenarios] for month in months]
     intro = ["## FUT mensal (%)", "", "Média das execuções. FUT é a carga da destilação sobre a capacidade.", ""]
     return intro + table(["Mês"] + list(scenarios), rows)
 
 
 def region_section(scenarios):
     rows = [
-        [scenario_id] + [mean_std(summary(nested_values(scenario, "regions", region, "self_sufficiency_pct")), 1) for region in REGIONS]
+        [scenario_id] + [mean_std(nested_values(scenario, "regions", region, "self_sufficiency_pct"), 1) for region in REGIONS]
         for scenario_id, scenario in scenarios.items()
     ]
     intro = [
@@ -499,13 +505,14 @@ def region_section(scenarios):
 
 
 def refinery_section(scenarios):
-    reference = scenarios.get(REFERENCE)
-    if not reference:
-        return []
-    plants = sorted({plant for run in reference["details"] for plant in run["plants"]})
+    reference = scenarios[REFERENCE]
     rows = [
-        [plant] + [mean_std(summary(nested_values(reference, "plants", plant, key)), 1 if key != "production_mm3" else 3) for key, _label, _unit in PLANT]
-        for plant in plants
+        [plant]
+        + [
+            mean_std(nested_values(reference, "plants", plant, key), 3 if key == "production_mm3" else 1)
+            for key, _label, _unit in PLANT
+        ]
+        for plant in sorted(reference["details"][0]["plants"])
     ]
     headers = ["Refinaria", "Produção (Mm³)", "Participação (%)", "FUT (%)", "Dias no teto", "Dias fora do modelo"]
     intro = [
@@ -517,32 +524,25 @@ def refinery_section(scenarios):
     return intro + table(headers, rows)
 
 
-def failure_section(scenarios):
-    failed = [
-        f"- `{scenario_id}`, execução {row['run']}: {row['note']}"
-        for scenario_id, scenario in scenarios.items()
-        for row in scenario["failed"]
-    ]
-    return ["## Execuções que falharam", ""] + failed + [""] if failed else []
-
-
 def report(study, scenarios, monthly):
+    historical = json.loads(HISTORICAL.read_text(encoding="utf-8"))["annual"]
     lines = [
         f"# Análise da bateria `{study.name}`",
         "",
-        "Cada cenário tem até 10 execuções. Média ± desvio padrão (dp) resume as execuções. "
+        "Cada cenário tem 10 execuções. Média ± desvio padrão (dp) resume as execuções. "
         "IC 95% é o intervalo de confiança de 95% da média, pela distribuição t de Student. "
         "Mm³ são milhões de m³ e p.p. são pontos percentuais.",
         "",
     ]
     lines += annual_section(scenarios)
     lines += reference_section(scenarios)
-    lines += historical_section(scenarios)
+    lines += historical_section(scenarios, historical)
+    lines += historical_coverage_section(scenarios, historical)
     lines += daily_section(scenarios)
     lines += monthly_section(scenarios, monthly)
+    lines += regional_coverage_section(scenarios)
     lines += region_section(scenarios)
     lines += refinery_section(scenarios)
-    lines += failure_section(scenarios)
     return "\n".join(lines)
 
 
@@ -551,8 +551,8 @@ def main():
     parser.add_argument("study", nargs="?", help="Pasta da bateria. Sem valor, usa a mais recente.")
     args = parser.parse_args()
 
-    study = study_dir(args.study)
-    scenarios = collect(study, read_csv(study / "manifest.csv"))
+    study = Path(args.study) if args.study else max(STUDIES.iterdir(), key=lambda path: path.stat().st_mtime)
+    scenarios = collect(study)
     output = study / "analysis"
     output.mkdir(exist_ok=True)
 

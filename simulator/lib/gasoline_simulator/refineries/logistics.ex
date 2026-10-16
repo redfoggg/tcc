@@ -1,13 +1,6 @@
 defmodule GasolineSimulator.Refineries.Logistics do
   alias GasolineSimulator.Data.Regions
-  alias GasolineSimulator.Refineries.DeliverySupervisor
   alias GasolineSimulator.Refineries.Plant
-
-  def clear(ids, run_id) do
-    DeliverySupervisor.stop_run(run_id)
-    Enum.each(ids, &Plant.reset(&1, run_id))
-    :ok
-  end
 
   def landed(ids, day, run_id) do
     Enum.reduce(ids, {[], 0.0, %{}, %{}}, fn id, {present, volume, by_region, by_plant} ->

@@ -4,10 +4,12 @@ Caminhos relativos a `simulator/`. A matemática está em
 `docs/model_specification.md`.
 
 O aplicativo é Elixir, rodando na BEAM, a máquina virtual do Erlang. Cada
-refinaria e cada comboio é um processo próprio. Um GenServer é um
-processo servidor do OTP, a biblioteca padrão do Erlang para processos
-supervisionados. O solver é Rust, chamado por um NIF (função nativa
-implementada fora da BEAM) gerado pelo Rustler.
+execução sobe a própria árvore de processos: as 12 refinarias, um
+supervisor de comboios e um processo para cada comboio. Nada dessa
+árvore é compartilhado com outra execução, e ela é derrubada no fim do
+ano. Um GenServer é um processo servidor do OTP, a biblioteca padrão do
+Erlang para processos supervisionados. O solver é Rust, chamado por um
+NIF (função nativa implementada fora da BEAM) gerado pelo Rustler.
 
 ## Módulos
 
@@ -17,12 +19,13 @@ implementada fora da BEAM) gerado pelo Rustler.
 | `Data.Catalog` | Nomes e UFs (unidades da federação) das 12 refinarias |
 | `Data.Regions` | População de cada região e a região de cada refinaria |
 | `Data.Historical` | Lê `historical_2025_summary.json` |
-| `Refineries.Plant` | GenServer de uma refinaria: tanque, rampa, envio de comboios, contagem de perdas e pausa de rota |
+| `Refineries.Fleet` | Sobe e derruba a árvore de uma execução: plantas, supervisor de comboios e comboios |
+| `Refineries.Plant` | GenServer de uma refinaria dentro de uma execução: tanque, rampa, envio de comboios, contagem de perdas e pausa de rota |
 | `Refineries.Delivery` | Processo de um comboio na estrada |
-| `Refineries.DeliverySupervisor` | Supervisiona os comboios e encerra o que falha no sorteio |
+| `Refineries.DeliverySupervisor` | Supervisor dos comboios de uma execução. Encerra o que falha no sorteio |
 | `Refineries.Distances` | Quilômetros de rodovia de cada par e dias de caminhão |
 | `Refineries.Logistics` | Soma as chegadas do dia, calcula pedido e oferta de cada região e envia os comboios |
-| `Refineries.Supervisor` | Supervisiona as 12 plantas. Uma planta que cai não derruba as outras |
+| `Refineries.Supervisor` | As 12 plantas do painel, que dizem quem está no ar. Uma planta que cai não derruba as outras |
 | `Scenarios.YieldSampling` | Sorteia $R_{i,d}$ na lista mensal válida da refinaria |
 | `Models.Overrides` | Ajuste de demanda, único ou por mês |
 | `Models.Problem` | Monta o dia, os limites de cada planta e a entrada do solver |
@@ -69,8 +72,9 @@ dia termina com `status :ok`.
 Cada dia traz demanda, produção, déficit, excedente, chegadas, tanque de
 cada planta, fechamento de cada região, FUT (fator de utilização total)
 e as refinarias no ar, com o rendimento sorteado. O mês soma os dias. O
-ano soma os dias e recalcula demanda atendida, déficit, excedente e
-cobertura a partir da produção do ano menos as perdas no transporte.
+ano soma os dias e calcula duas coberturas. A nacional usa a produção do
+ano menos as perdas no transporte, contra a demanda do país. A efetiva
+soma o que cada região teve no ano, até a demanda dela.
 
 ## Painel
 
@@ -87,10 +91,18 @@ execuções vivem só na memória. O painel mostra:
   aparecem, e "Ver mais" mostra o resto.
 
 O ano do painel leva pelo menos 30 s, para dar tempo de derrubar uma
-planta no meio.
+planta no meio. "Derrubar" desliga a planta do painel e a planta da
+execução em curso, que perde o tanque e as cargas que esperava.
+"Recuperar" sobe as duas de novo, com a planta da execução zerada e na
+rampa. A lista de entregas a caminho mostra só os comboios do Planejado.
 
 ## Bateria
 
 O botão "Rodar bateria" roda os dez cenários de `docs/methodology.md`,
 dez vezes cada, e grava os CSVs em `data/studies/`. A bateria usa a
-própria lista de plantas no ar e não espera os 30 s.
+própria lista de plantas no ar e não espera os 30 s. As 100 execuções
+rodam ao mesmo tempo, cada uma com a própria árvore de processos. Uma
+execução não espera pelas plantas de outra nem vê os dados dela. Planta
+fora do ar num cenário de parada continua viva na árvore e guarda o
+tanque. Ela só deixa de entrar no plano e na logística enquanto estiver
+parada.

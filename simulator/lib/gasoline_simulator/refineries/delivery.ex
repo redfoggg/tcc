@@ -11,8 +11,12 @@ defmodule GasolineSimulator.Refineries.Delivery do
     }
   end
 
-  def start_link(attrs) do
+  def start_link(%{observed: true} = attrs) do
     GenServer.start_link(__MODULE__, attrs, name: via(attrs))
+  end
+
+  def start_link(attrs) do
+    GenServer.start_link(__MODULE__, attrs)
   end
 
   def claim(pid, day) when is_pid(pid) do
@@ -20,13 +24,6 @@ defmodule GasolineSimulator.Refineries.Delivery do
       GenServer.call(pid, {:claim, day})
     catch
       :exit, _reason -> {:error, :absent}
-    end
-  end
-
-  def pid(id) do
-    case Registry.lookup(@registry, id) do
-      [{pid, _}] -> pid
-      [] -> nil
     end
   end
 

@@ -242,9 +242,11 @@ defmodule GasolineSimulatorWeb.DashboardLive do
             como estão. Cada cenário traz a própria demanda. Toda remessa usa
             o tempo de caminhão de cada par. O ajuste de demanda e a
             porcentagem de falha do formulário não
-            entram na bateria. A referência sorteia de 1% a 5% de falha em
-            cada rota. A falha alta sorteia de 41% a 100%. Os demais cenários
-            deixam a porcentagem em 1.
+            entram na bateria. Cada execução sorteia de 1% a 5% de falha em
+            cada rota, e todos os cenários usam as mesmas taxas da execução
+            de mesmo número da referência. A falha alta sorteia de 41% a
+            100%. O bloqueio sorteia com peso maior as rotas entre Sul ou
+            Sudeste e Norte ou Nordeste.
           </p>
           <p id="dashboard-study-status" class="text-sm">{study_status(@study)}</p>
           <p
@@ -606,9 +608,14 @@ defmodule GasolineSimulatorWeb.DashboardLive do
             unit="Mm³"
           />
           <.metric
-            label="Cobertura anual"
+            label="Cobertura nacional"
             value={"#{pct(@annual.coverage)}%"}
-            unit="demanda atendida"
+            unit="produção menos perdas sobre a demanda do país"
+          />
+          <.metric
+            label="Cobertura efetiva"
+            value={"#{pct(@annual.effective_coverage)}%"}
+            unit="soma do que cada região recebeu, até a demanda dela"
           />
         </div>
         <div class="space-y-3 border-b border-base-300 px-6 py-5">

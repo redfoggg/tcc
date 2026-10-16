@@ -22,13 +22,13 @@ defmodule GasolineSimulator.Refineries.Plant do
   end
 
   def start_link(attrs) do
-    GenServer.start_link(__MODULE__, attrs, name: via(attrs.id))
+    GenServer.start_link(__MODULE__, attrs, name: via(key(attrs)))
   end
 
-  def arrivals(id, day, run_id), do: call(id, {:arrivals, day, run_id})
+  def arrivals(id, day, run_id), do: call({run_id, id}, {:arrivals, day})
 
   def ship(id, volume, day, peer_ids, run_id, failure_pct \\ %{}, closed_roads \\ MapSet.new()) do
-    call(id, {:ship, volume, day, peer_ids, run_id, failure_pct(failure_pct), closed_roads})
+    call({run_id, id}, {:ship, volume, day, peer_ids, failure_pct, closed_roads})
   end
 
   def failure_pct(values) when is_map(values) do
@@ -49,54 +49,54 @@ defmodule GasolineSimulator.Refineries.Plant do
 
   def default_failure_pct, do: @default_failure_pct
 
-  def hold(id, volume, run_id), do: call(id, {:hold, volume, run_id})
+  def hold(id, volume, run_id), do: call({run_id, id}, {:hold, volume})
 
   def credit(id, volume, run_id) when is_number(volume) and volume > 0.0 do
-    call(id, {:credit, volume, run_id})
+    call({run_id, id}, {:credit, volume})
   end
 
   def credit(_id, _volume, _run_id), do: :ok
 
   def draw(id, volume, run_id) when is_number(volume) and volume > 0.0 do
-    call(id, {:draw, volume, run_id})
+    call({run_id, id}, {:draw, volume})
   end
 
   def draw(_id, _volume, _run_id), do: :ok
 
-  def on_hand(id, run_id), do: call(id, {:on_hand, run_id})
+  def on_hand(id, run_id), do: call({run_id, id}, :on_hand)
 
-  def notices(id), do: call(id, :notices)
+  def notices(id, run_id), do: call({run_id, id}, :notices)
 
-  def lost_m3(id, run_id), do: call(id, {:lost_m3, run_id})
+  def lost_m3(id, run_id), do: call({run_id, id}, :lost_m3)
 
-  def fleet(id), do: call(id, :fleet)
+  def heard(id, run_id), do: call({run_id, id}, :heard)
 
   def open_run(id, run_id, burst, sustainable) do
-    call(id, {:open_run, run_id, burst, sustainable})
+    call({run_id, id}, {:open_run, burst, sustainable})
   end
 
-  def rejoin(id), do: call(id, :rejoin)
+  def rejoin(id, run_id), do: call({run_id, id}, :rejoin)
 
-  def ratio(id) do
-    case call(id, :ratio) do
+  def ratio(id, run_id) do
+    case call({run_id, id}, :ratio) do
       {:error, :absent} -> Problem.burst_utilization_ratio()
       ratio -> ratio
     end
   end
 
-  def floor_ratio(id) do
-    case call(id, :floor_ratio) do
+  def floor_ratio(id, run_id) do
+    case call({run_id, id}, :floor_ratio) do
       {:error, :absent} -> Problem.sustainable_utilization_ratio()
       ratio -> ratio
     end
   end
 
-  def hear(id, report), do: call(id, {:hear, report})
+  def hear(id, report), do: call({report.run_id, id}, {:hear, report})
 
-  def reset(id, run_id), do: call(id, {:reset, run_id})
+  def pid(id, run_id), do: pid({run_id, id})
 
-  def pid(id) do
-    case Registry.lookup(@registry, id) do
+  def pid(key) do
+    case Registry.lookup(@registry, key) do
       [{pid, _}] -> pid
       [] -> nil
     end
@@ -107,49 +107,28 @@ defmodule GasolineSimulator.Refineries.Plant do
     {:ok,
      %{
        id: attrs.id,
-       on_hand: %{},
-       outgoing: %{},
-       expected: %{},
+       run: Map.get(attrs, :run),
+       deliveries: Map.get(attrs, :deliveries),
+       observed: Map.get(attrs, :observed, false),
+       on_hand: 0.0,
+       outgoing: [],
+       expected: [],
        notices: [],
        routes: %{},
-       lost_m3: %{},
-       fleet: nil,
+       lost_m3: 0.0,
+       heard: nil,
        pace: nil,
-       burst: nil,
        sustainable: nil
      }}
   end
 
   @impl true
-  def handle_call({:reset, run_id}, _from, state) do
-    {:reply, :ok,
-     %{
-       state
-       | on_hand: Map.delete(state.on_hand, run_id),
-         outgoing: Map.delete(state.outgoing, run_id),
-         expected: Map.delete(state.expected, run_id),
-         notices: Enum.reject(state.notices, &(&1.run_id == run_id)),
-         routes: Map.delete(state.routes, run_id),
-         lost_m3: Map.delete(state.lost_m3, run_id),
-         fleet: clear_fleet(state.fleet, run_id),
-         pace: clear_pace(state.pace, run_id),
-         burst: nil,
-         sustainable: nil
-     }}
-  end
-
-  def handle_call({:open_run, run_id, burst, sustainable}, _from, state) do
-    pace =
-      case state.pace do
-        %{run_id: ^run_id} = pace -> pace
-        _ -> open_pace(sustainable, run_id)
-      end
-
-    {:reply, :ok, %{state | pace: pace, burst: burst, sustainable: sustainable}}
+  def handle_call({:open_run, _burst, sustainable}, _from, state) do
+    {:reply, :ok, %{state | pace: state.pace || open_pace(sustainable), sustainable: sustainable}}
   end
 
   def handle_call(:rejoin, _from, state) do
-    {:reply, :ok, %{state | pace: ramp_pace(state.pace.run_id)}}
+    {:reply, :ok, %{state | pace: ramp_pace()}}
   end
 
   def handle_call(:ratio, _from, state) do
@@ -166,46 +145,44 @@ defmodule GasolineSimulator.Refineries.Plant do
 
     pace =
       if report.deficit_m3 <= 1.0 and state.pace.phase == :ramping do
-        climb_ramp(state.pace, state)
+        climb_ramp(state.pace, state.sustainable)
       else
         state.pace
       end
 
-    {:reply, :ok, %{state | pace: pace, fleet: heard}}
+    {:reply, :ok, %{state | pace: pace, heard: heard}}
   end
 
-  def handle_call(:fleet, _from, state) do
-    {:reply, state.fleet, state}
+  def handle_call(:heard, _from, state) do
+    {:reply, state.heard, state}
   end
 
-  def handle_call({:hold, _volume, _run_id}, _from, state) do
+  def handle_call({:hold, _volume}, _from, state) do
     {:reply, :ok, state}
   end
 
-  def handle_call({:credit, volume, run_id}, _from, state) do
-    {:reply, :ok, add_on_hand(state, run_id, volume)}
+  def handle_call({:credit, volume}, _from, state) do
+    {:reply, :ok, %{state | on_hand: state.on_hand + volume}}
   end
 
-  def handle_call({:draw, volume, run_id}, _from, state) do
-    held = Map.get(state.on_hand, run_id, 0.0)
-    {:reply, :ok, debit_on_hand(state, run_id, min(volume, held))}
+  def handle_call({:draw, volume}, _from, state) do
+    {:reply, :ok, %{state | on_hand: state.on_hand - min(volume, state.on_hand)}}
   end
 
-  def handle_call({:on_hand, run_id}, _from, state) do
-    {:reply, {:ok, Map.get(state.on_hand, run_id, 0.0)}, state}
+  def handle_call(:on_hand, _from, state) do
+    {:reply, {:ok, state.on_hand}, state}
   end
 
   def handle_call(:notices, _from, state) do
     {:reply, state.notices, state}
   end
 
-  def handle_call({:lost_m3, run_id}, _from, state) do
-    {:reply, {:ok, Map.get(state.lost_m3, run_id, 0.0)}, state}
+  def handle_call(:lost_m3, _from, state) do
+    {:reply, {:ok, state.lost_m3}, state}
   end
 
-  def handle_call({:arrivals, day, run_id}, _from, state) do
-    waiting = Map.get(state.expected, run_id, [])
-    {due, later} = Enum.split_with(waiting, &(not Date.after?(&1.arrival, day)))
+  def handle_call({:arrivals, day}, _from, state) do
+    {due, later} = Enum.split_with(state.expected, &(not Date.after?(&1.arrival, day)))
 
     volume =
       Enum.reduce(due, 0.0, fn delivery, acc ->
@@ -215,33 +192,26 @@ defmodule GasolineSimulator.Refineries.Plant do
         end
       end)
 
-    {:reply, {:ok, volume}, put_list(state, :expected, run_id, later)}
+    {:reply, {:ok, volume}, %{state | expected: later}}
   end
 
-  def handle_call({:ship, volume, day, peer_ids, run_id, failure_pct, closed_roads}, _from, state) do
-    volume = min(volume, Map.get(state.on_hand, run_id, 0.0))
+  def handle_call({:ship, volume, day, peer_ids, failure_pct, closed_roads}, _from, state) do
+    volume = min(volume, state.on_hand)
 
     if volume <= 0.0 do
       {:reply, {:ok, 0.0}, state}
     else
-      case deliver(
-             state,
-             volume,
-             day,
-             peers_of(state.id, peer_ids),
-             run_id,
-             failure_pct,
-             closed_roads
-           ) do
+      case deliver(state, volume, day, peers_of(state.id, peer_ids), failure_pct, closed_roads) do
         {:ok, state} -> {:reply, {:ok, volume}, state}
         :unclaimed -> {:reply, {:error, :absent}, state}
       end
     end
   end
 
-  def handle_call({:track, delivery}, _from, state) do
+  @impl true
+  def handle_cast({:track, delivery}, state) do
     Process.monitor(delivery.pid)
-    {:reply, :ok, remember(state, :expected, delivery)}
+    {:noreply, %{state | expected: [delivery | state.expected]}}
   end
 
   @impl true
@@ -250,12 +220,16 @@ defmodule GasolineSimulator.Refineries.Plant do
   end
 
   defp signal(state, pid, :normal) do
-    %{state | outgoing: drop_pid(state.outgoing, pid), expected: drop_pid(state.expected, pid)}
+    %{
+      state
+      | outgoing: Enum.reject(state.outgoing, &(&1.pid == pid)),
+        expected: Enum.reject(state.expected, &(&1.pid == pid))
+    }
   end
 
   defp signal(state, pid, _reason) do
-    {outgoing, sent} = take_pid(state.outgoing, pid)
-    {expected, lost} = take_pid(state.expected, pid)
+    {sent, outgoing} = Enum.split_with(state.outgoing, &(&1.pid == pid))
+    {lost, expected} = Enum.split_with(state.expected, &(&1.pid == pid))
 
     %{
       state
@@ -276,73 +250,22 @@ defmodule GasolineSimulator.Refineries.Plant do
     }
   end
 
-  defp clear_fleet(%{run_id: run_id}, run_id), do: nil
-  defp clear_fleet(fleet, _run_id), do: fleet
-
-  defp clear_pace(%{run_id: run_id}, run_id), do: nil
-  defp clear_pace(pace, _run_id), do: pace
-
-  defp open_pace(burst, run_id) do
-    %{phase: :open, ratio: burst, surplus: 0.0, lock_left: 0, run_id: run_id}
+  defp open_pace(sustainable) do
+    %{phase: :open, ratio: sustainable}
   end
 
-  defp ramp_pace(run_id) do
-    %{
-      phase: :ramping,
-      ratio: Problem.min_utilization_ratio(),
-      surplus: 0.0,
-      lock_left: 0,
-      run_id: run_id
-    }
+  defp ramp_pace do
+    %{phase: :ramping, ratio: Problem.min_utilization_ratio()}
   end
 
-  defp climb_ramp(%{ratio: ratio} = pace, state) do
-    nxt = min(ratio + @ratio_step, state.sustainable)
+  defp climb_ramp(%{ratio: ratio} = pace, sustainable) do
+    nxt = min(ratio + @ratio_step, sustainable)
 
-    if nxt + 1.0e-12 >= state.sustainable do
-      open_pace(state.sustainable, pace.run_id)
+    if nxt + 1.0e-12 >= sustainable do
+      open_pace(sustainable)
     else
       %{pace | ratio: nxt}
     end
-  end
-
-  defp add_on_hand(state, run_id, volume) do
-    on_hand = Map.get(state.on_hand, run_id, 0.0) + volume
-    %{state | on_hand: Map.put(state.on_hand, run_id, on_hand)}
-  end
-
-  defp debit_on_hand(state, run_id, volume) do
-    on_hand = Map.get(state.on_hand, run_id, 0.0) - volume
-    %{state | on_hand: Map.put(state.on_hand, run_id, on_hand)}
-  end
-
-  defp remember(state, field, delivery) do
-    waiting = [delivery | Map.get(state, field) |> Map.get(delivery.run_id, [])]
-    put_list(state, field, delivery.run_id, waiting)
-  end
-
-  defp drop_pid(groups, pid) do
-    Map.new(groups, fn {run_id, deliveries} ->
-      {run_id, Enum.reject(deliveries, &(&1.pid == pid))}
-    end)
-  end
-
-  defp take_pid(groups, pid) do
-    Enum.reduce(groups, {%{}, []}, fn {run_id, deliveries}, {kept, taken} ->
-      {hit, rest} = Enum.split_with(deliveries, &(&1.pid == pid))
-      {put_if_any(kept, run_id, rest), hit ++ taken}
-    end)
-  end
-
-  defp put_if_any(groups, _run_id, []), do: groups
-  defp put_if_any(groups, run_id, deliveries), do: Map.put(groups, run_id, deliveries)
-
-  defp put_list(state, field, run_id, []) do
-    Map.put(state, field, Map.delete(Map.get(state, field), run_id))
-  end
-
-  defp put_list(state, field, run_id, deliveries) do
-    Map.put(state, field, Map.put(Map.get(state, field), run_id, deliveries))
   end
 
   defp arrival_on(day, origin, destination) do
@@ -355,47 +278,48 @@ defmodule GasolineSimulator.Refineries.Plant do
     |> Enum.uniq()
   end
 
-  defp deliver(state, volume, _day, _peers, _run_id, _failure_pct, _closed_roads)
+  defp deliver(state, volume, _day, _peers, _failure_pct, _closed_roads)
        when volume <= 0.0,
        do: {:ok, state}
 
-  defp deliver(_state, _volume, _day, [], _run_id, _failure_pct, _closed_roads), do: :unclaimed
+  defp deliver(_state, _volume, _day, [], _failure_pct, _closed_roads), do: :unclaimed
 
-  defp deliver(state, volume, day, [peer | rest], run_id, failure_pct, closed_roads) do
-    if route_paused?(state, peer, day, run_id) or road_closed?(state.id, peer, closed_roads) do
-      deliver(state, volume, day, rest, run_id, failure_pct, closed_roads)
+  defp deliver(state, volume, day, [peer | rest], failure_pct, closed_roads) do
+    if route_paused?(state, peer, day) or road_closed?(state.id, peer, closed_roads) do
+      deliver(state, volume, day, rest, failure_pct, closed_roads)
     else
       attrs = %{
         origin_id: state.id,
         destination_id: peer,
         volume_m3: volume,
         arrival: arrival_on(day, state.id, peer),
-        run_id: run_id
+        run_id: state.run,
+        observed: state.observed
       }
 
-      case DeliverySupervisor.start_delivery(attrs) do
+      case DeliverySupervisor.start_delivery(state.deliveries, attrs) do
         {:ok, pid, id} ->
           delivery = Map.merge(attrs, %{id: id, pid: pid})
 
-          case call(peer, {:track, delivery}) do
+          case cast({state.run, peer}, {:track, delivery}) do
             :ok ->
               Process.monitor(pid)
-              state = state |> debit_on_hand(run_id, volume) |> remember(:outgoing, delivery)
+              state = %{state | on_hand: state.on_hand - volume, outgoing: [delivery | state.outgoing]}
 
               if cargo_lost?(failure_pct, state.id, peer) do
-                DeliverySupervisor.fail(id)
-                {:ok, note_loss(state, peer, day, run_id, volume)}
+                DeliverySupervisor.fail(state.deliveries, pid)
+                {:ok, note_loss(state, peer, day, volume)}
               else
-                {:ok, note_success(state, peer, run_id)}
+                {:ok, note_success(state, peer)}
               end
 
             {:error, :absent} ->
               GenServer.stop(pid, :normal)
-              deliver(state, volume, day, rest, run_id, failure_pct, closed_roads)
+              deliver(state, volume, day, rest, failure_pct, closed_roads)
           end
 
         _other ->
-          deliver(state, volume, day, rest, run_id, failure_pct, closed_roads)
+          deliver(state, volume, day, rest, failure_pct, closed_roads)
       end
     end
   end
@@ -407,12 +331,10 @@ defmodule GasolineSimulator.Refineries.Plant do
 
   defp route_pct(failure_pct, origin, destination) do
     pair = Distances.pair(origin, destination)
-    label = Distances.pair_key(pair)
 
     raw =
       cond do
         Map.has_key?(failure_pct, pair) -> Map.fetch!(failure_pct, pair)
-        Map.has_key?(failure_pct, label) -> Map.fetch!(failure_pct, label)
         Map.has_key?(failure_pct, destination) -> Map.fetch!(failure_pct, destination)
         true -> Map.get(failure_pct, to_string(destination), @default_failure_pct)
       end
@@ -453,8 +375,8 @@ defmodule GasolineSimulator.Refineries.Plant do
 
   defp clamp_failure_pct(_pct), do: 0
 
-  defp route_paused?(state, destination, day, run_id) do
-    case route_of(state, run_id, destination) do
+  defp route_paused?(state, destination, day) do
+    case route_of(state, destination) do
       %{resume_on: %Date{} = resume_on} -> Date.compare(day, resume_on) == :lt
       _ -> false
     end
@@ -464,8 +386,8 @@ defmodule GasolineSimulator.Refineries.Plant do
     MapSet.member?(closed_roads, Distances.pair(origin, destination))
   end
 
-  defp note_loss(state, destination, day, run_id, volume) do
-    route = route_of(state, run_id, destination)
+  defp note_loss(state, destination, day, volume) do
+    route = route_of(state, destination)
     losses = route.losses + 1
 
     resume_on =
@@ -475,28 +397,24 @@ defmodule GasolineSimulator.Refineries.Plant do
         route.resume_on
       end
 
-    state
-    |> Map.update!(:lost_m3, &Map.update(&1, run_id, volume, fn acc -> acc + volume end))
-    |> put_route(run_id, destination, %{losses: losses, resume_on: resume_on})
+    %{state | lost_m3: state.lost_m3 + volume}
+    |> put_route(destination, %{losses: losses, resume_on: resume_on})
   end
 
-  defp note_success(state, destination, run_id) do
-    put_route(state, run_id, destination, %{losses: 0, resume_on: nil})
+  defp note_success(state, destination) do
+    put_route(state, destination, %{losses: 0, resume_on: nil})
   end
 
-  defp route_of(state, run_id, destination) do
-    state.routes
-    |> Map.get(run_id, %{})
-    |> Map.get(destination, %{losses: 0, resume_on: nil})
+  defp route_of(state, destination) do
+    Map.get(state.routes, destination, %{losses: 0, resume_on: nil})
   end
 
-  defp put_route(state, run_id, destination, route) do
-    routes = Map.get(state.routes, run_id, %{})
-    %{state | routes: Map.put(state.routes, run_id, Map.put(routes, destination, route))}
+  defp put_route(state, destination, route) do
+    %{state | routes: Map.put(state.routes, destination, route)}
   end
 
-  defp call(id, message) do
-    case pid(id) do
+  defp call(key, message) do
+    case pid(key) do
       nil ->
         {:error, :absent}
 
@@ -509,5 +427,15 @@ defmodule GasolineSimulator.Refineries.Plant do
     end
   end
 
-  defp via(id), do: {:via, Registry, {@registry, id}}
+  defp cast(key, message) do
+    case pid(key) do
+      nil -> {:error, :absent}
+      pid -> GenServer.cast(pid, message)
+    end
+  end
+
+  defp key(%{run: run, id: id}) when not is_nil(run), do: {run, id}
+  defp key(%{id: id}), do: id
+
+  defp via(key), do: {:via, Registry, {@registry, key}}
 end

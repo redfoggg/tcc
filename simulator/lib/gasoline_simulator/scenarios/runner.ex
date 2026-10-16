@@ -6,6 +6,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
   alias GasolineSimulator.Models.Problem
   alias GasolineSimulator.Models.Result
   alias GasolineSimulator.Refineries.Distances
+  alias GasolineSimulator.Refineries.Fleet
   alias GasolineSimulator.Refineries.Logistics
   alias GasolineSimulator.Refineries.Plant
   alias GasolineSimulator.Refineries.Supervisor, as: PlantSupervisor
@@ -34,7 +35,9 @@ defmodule GasolineSimulator.Scenarios.Runner do
       sustainable:
         Keyword.get(opts, :sustainable_utilization_ratio, Problem.sustainable_utilization_ratio()),
       failure_pct: Plant.failure_pct(param_failure_pct(params)),
-      closed_roads: Keyword.get(opts, :closed_roads, fn _day -> [] end)
+      closed_roads: Keyword.get(opts, :closed_roads, fn _day -> [] end),
+      on_fleet: Keyword.get(opts, :on_fleet, fn _fleet -> :ok end),
+      observe_deliveries: Keyword.get(opts, :observe_deliveries, false)
     }
 
     with {:ok, days, lost_m3} <- run_days(ctx) do
@@ -50,12 +53,13 @@ defmodule GasolineSimulator.Scenarios.Runner do
 
   defp run_days(ctx) do
     run_id = make_ref()
-    ctx = Map.put(ctx, :run_id, run_id)
+    fleet = Fleet.start(run_id, Catalog.ids(), ctx.observe_deliveries)
+    ctx.on_fleet.(fleet)
 
     try do
-      walk_days(ctx)
+      walk_days(Map.put(ctx, :run_id, run_id))
     after
-      Logistics.clear(Catalog.ids(), run_id)
+      Fleet.stop(fleet)
     end
   end
 
@@ -73,7 +77,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
       alive = MapSet.new(present)
       opening_by_id = opening_stock(ctx.run_id)
       open_plants(alive, ctx)
-      rejoin_plants(state.prior, alive)
+      rejoin_plants(state.prior, alive, ctx.run_id)
 
       {result, carried_deficit} =
         day
@@ -247,12 +251,12 @@ defmodule GasolineSimulator.Scenarios.Runner do
     Enum.each(alive, &Plant.open_run(&1, ctx.run_id, ctx.burst, ctx.sustainable))
   end
 
-  defp rejoin_plants(:start, _alive), do: :ok
+  defp rejoin_plants(:start, _alive, _run_id), do: :ok
 
-  defp rejoin_plants(prior, alive) do
+  defp rejoin_plants(prior, alive, run_id) do
     alive
     |> MapSet.difference(prior)
-    |> Enum.each(&Plant.rejoin/1)
+    |> Enum.each(&Plant.rejoin(&1, run_id))
   end
 
   defp pace_year(_started_at, _index, _day_count, min_year_ms) when min_year_ms <= 0, do: :ok
@@ -299,7 +303,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
   end
 
   defp catch_up_ratio(refinery, planning_yield, ctx, plant_catch_up) do
-    base = Plant.floor_ratio(refinery.id)
+    base = Plant.floor_ratio(refinery.id, ctx.run_id)
     owed = Map.get(plant_catch_up, refinery.id, 0.0)
     capacity = refinery.processing_capacity_m3
     yield = planning_yield || Map.get(refinery, :national_average_yield) || 1.0
@@ -459,15 +463,21 @@ defmodule GasolineSimulator.Scenarios.Runner do
     served = min(annual.demand_m3, available)
     deficit = max(annual.demand_m3 - available, 0.0)
     excess = max(available - annual.demand_m3, 0.0)
+    effective = Enum.sum_by(annual.regions, & &1.served_m3)
 
     Map.merge(annual, %{
       lost_m3: lost_m3,
       served_demand_m3: served,
       deficit_m3: deficit,
       excess_m3: excess,
-      coverage: if(annual.demand_m3 == 0.0, do: 0.0, else: served / annual.demand_m3)
+      coverage: share(served, annual.demand_m3),
+      effective_served_m3: effective,
+      effective_coverage: share(effective, annual.demand_m3)
     })
   end
+
+  defp share(_part, total) when total == 0.0, do: 0.0
+  defp share(part, total), do: part / total
 
   defp sum(periods, field), do: Enum.sum_by(periods, &Map.fetch!(&1, field))
 

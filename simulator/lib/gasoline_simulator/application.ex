@@ -12,7 +12,6 @@ defmodule GasolineSimulator.Application do
       {Registry, keys: :unique, name: GasolineSimulator.Refineries.Registry},
       {Registry, keys: :unique, name: GasolineSimulator.Refineries.DeliveryRegistry},
       GasolineSimulator.Refineries.Supervisor,
-      GasolineSimulator.Refineries.DeliverySupervisor,
       {Task.Supervisor, name: GasolineSimulator.Scenarios.TaskSupervisor},
       GasolineSimulator.Scenarios.Orchestrator,
       GasolineSimulator.Scenarios.Study,

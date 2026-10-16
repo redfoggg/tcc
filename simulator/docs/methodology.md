@@ -12,7 +12,10 @@ do formulário não entram: cada cenário traz os próprios insumos.
 
 Cada execução resolve os 365 dias de 2025 com o mesmo modelo do
 Planejado 2025, descrito em `docs/model_specification.md`, sem a pausa
-de 30 s do painel. Ficam fixos:
+de 30 s do painel. As 100 execuções rodam ao mesmo tempo, cada uma com
+as próprias plantas e os próprios comboios, sem nada compartilhado, e o
+manifesto grava as linhas na ordem dos cenários.
+Ficam fixos:
 
 - O calendário de 2025, a demanda curada e a capacidade curada.
 - As 12 refinarias do catálogo. A LUBNOR, refinaria de lubrificantes do
@@ -26,7 +29,13 @@ de 30 s do painel. Ficam fixos:
   percentual em cada dia em que o déficit do país fica em até 1 m³.
 - O prazo de cada comboio: o tempo de caminhão da estrada, com mínimo de
   1 dia.
-- A taxa de falha dos comboios: 1%, exceto nos cenários 3 e 7.
+- A taxa de falha dos comboios, exceto no cenário 7. No início da
+  bateria, cada número de execução, de 1 a 10, recebe um sorteio de uma
+  taxa inteira de 1% a 5% para cada uma das 66 rotas. Rota é o par de
+  refinarias sem direção, e a taxa vale nos dois sentidos. A execução
+  $n$ de todos os cenários usa as mesmas taxas da execução $n$ da
+  referência. Assim, cenário e referência diferem só no choque, e o
+  sorteio comum reduz o ruído da comparação.
 - A disponibilidade: as 12 plantas ficam no ar o ano inteiro, mesmo nos
   meses em que o histórico registra parada. As paradas de manutenção,
   como as da RNEST em fevereiro e da REVAP em outubro e novembro, ficam
@@ -77,10 +86,8 @@ execuções. A demanda é redistribuída entre as que ficam.
 ### 3. referencia
 
 O controle. As doze plantas ficam no ar, o rendimento é sorteado todo
-dia e a demanda segue o dado curado. Cada execução sorteia uma taxa de
-falha inteira de 1% a 5% para cada uma das 66 rotas. Rota é o par de
-refinarias sem direção, e a taxa vale nos dois sentidos. Só este cenário
-usa essa faixa.
+dia, a demanda segue o dado curado e a falha usa as taxas comuns da
+execução. Os outros cenários mudam uma coisa em relação a este.
 
 ### 4. choque_demanda
 
@@ -102,14 +109,25 @@ em cada mês. Em qualquer dia há exatamente uma parada.
 ### 7. falha_alta_remessa
 
 Cada execução sorteia uma taxa de falha inteira de 41% a 100% para cada
-rota. As doze plantas ficam no ar.
+rota, no lugar das taxas comuns. As doze plantas ficam no ar.
 
 ### 8. rotas_bloqueadas
 
-Cada execução sorteia três rotas entre as 66 e um bloco de dois meses
-consecutivos, começando entre janeiro e novembro. Nesses meses as três
-estradas ficam fechadas nos dois sentidos. A nota grava as rotas e os
-meses, no formato `rotas RECAP|REPLAN REDUC|REFAP REPAR|REVAP meses 3|4`.
+O bloqueio mira as rotas que mais carregam gasolina. Pelo próprio
+resultado do modelo, o Sul e o Sudeste produzem mais do que consomem, e
+o Norte e o Nordeste menos. Então os comboios correm entre uma planta do
+Sul ou do Sudeste e uma do Norte ou do Nordeste. São 32 das 66 rotas.
+
+Cada execução sorteia três rotas, sem repetição. Uma rota desse
+corredor tem peso 4, e as outras têm peso 1, então cerca de 79% das
+escolhas caem no corredor. O sorteio usa uma chave $k = v^{1/w}$ para
+cada rota, onde $v$ é um número aleatório entre 0 e 1 e $w$ é o peso,
+e fica com as três maiores chaves. Isso equivale a sortear uma rota por
+vez com probabilidade proporcional ao peso. Também sorteia um bloco de
+dois meses consecutivos, começando entre janeiro e novembro. Nesses
+meses as três estradas ficam fechadas nos dois sentidos. A nota grava
+as rotas e os meses, no formato
+`rotas RECAP|REPLAN REDUC|REFAP REPAR|REVAP meses 3|4`.
 
 ### 9. campanha_estavel
 
@@ -137,7 +155,9 @@ Colunas de `manifest.csv`:
 | `availability`, `offline_refineries`, `offline_months` | Regra de plantas no ar, quais saíram e em que meses |
 | `fut_lock` | Piso de FUT da execução |
 | `annual_demand_m3`, `annual_production_m3` | Demanda e gasolina A produzida no ano |
-| `annual_served_demand_m3`, `annual_deficit_m3`, `annual_coverage` | Demanda atendida, déficit e cobertura do ano |
+| `annual_served_demand_m3`, `annual_deficit_m3`, `annual_coverage` | Demanda atendida, déficit e cobertura nacional do ano |
+| `annual_effective_served_m3`, `annual_effective_coverage` | Soma do que cada região teve no ano, até a demanda dela, e a cobertura efetiva |
+| `coverage_north`, `coverage_northeast`, `coverage_southeast`, `coverage_south` | Fração da demanda de cada região servida no ano |
 | `annual_fut_pct` | FUT do ano |
 | `landed_m3`, `excess_m3`, `plant_stock_m3`, `lost_m3` | Chegadas, excedente, tanque no fim do ano e perdas no transporte |
 | `csv_path`, `note` | Caminho do CSV da execução e o que foi sorteado |
@@ -155,12 +175,16 @@ linhas multiplica o valor por 12. As contas de cada coluna estão em
 ## Análise
 
 ```
-python3 data/scripts/analyze_study.py [data/studies/<pasta>]
+python3 -m venv .venv
+.venv/bin/pip install -r data/scripts/requirements.txt
+.venv/bin/python data/scripts/analyze_study.py [data/studies/<pasta>]
 ```
 
-Sem argumento, o script usa a bateria mais recente. Só aceita pastas
-dentro de `data/studies` e usa apenas a biblioteca padrão do Python. Ele
-grava em `<pasta>/analysis/` um `report.md` com as tabelas abaixo e os
+O script usa NumPy para as contas sobre os vetores de resultados e SciPy
+para o intervalo de confiança e o teste de Welch. As versões estão em
+`data/scripts/requirements.txt`, e o ambiente `.venv` fica fora do git.
+Sem argumento, o script usa a bateria mais recente de `data/studies`.
+Ele grava em `<pasta>/analysis/` um `report.md` com as tabelas abaixo e os
 CSVs com todos os números: `scenario_annual.csv`,
 `scenario_vs_reference.csv`, `scenario_daily.csv`,
 `scenario_monthly.csv`, `scenario_refineries.csv` e
@@ -174,21 +198,31 @@ Para cada cenário, o resumo das execuções que terminaram traz:
 | Coeficiente de variação (CV) | Desvio padrão dividido pela média. Compara a dispersão de medidas em escalas diferentes |
 | Mínimo e máximo | Melhor e pior execução |
 | IC 95% | Intervalo de confiança de 95% da média, pela distribuição t de Student com $n-1$ graus de liberdade, onde $n$ é o número de execuções |
-| Δ contra a referência | Média do cenário menos média da referência. A diferença é marcada quando o intervalo de 95% do teste de Welch, que compara médias com variâncias diferentes, não inclui zero |
+| Δ contra a referência | Média do cenário menos média da referência. A diferença é marcada quando o valor p do teste t de Welch, que compara médias com variâncias diferentes, fica abaixo de 0,05. O CSV traz também o valor p e o intervalo de 95% da diferença |
 
 O relatório tem estas seções:
 
-- **Resultado anual:** cobertura, déficit, produção, FUT e perdas, e
-  quantas execuções cobriram 100% da demanda do ano.
-- **Efeito contra a referência:** quanto cada choque muda cobertura,
-  déficit, produção e FUT.
+- **Resultado anual:** cobertura nacional, cobertura efetiva com o IC
+  95%, déficit, produção, FUT e perdas. As duas coberturas estão em
+  `docs/model_specification.md`, seção Indicadores do painel.
+- **Efeito contra a referência:** quanto cada choque muda as duas
+  coberturas, o déficit, a produção e o FUT.
 - **Referência contra o Histórico 2025:** produção, demanda, saldo e FUT.
+- **Cobertura do Histórico 2025 com as mesmas simplificações:** a
+  cobertura nacional do Histórico, produção observada sobre a demanda, e
+  a cobertura efetiva dele como intervalo. O menor valor supõe que
+  nenhuma região mandou gasolina para outra. O maior supõe que toda a
+  sobra chegou onde faltava. A demanda regional segue a população do
+  Censo 2022. Ao lado, a autossuficiência de cada região no Histórico e
+  na referência.
 - **Fechamento diário:** dias com falta, maior falta diária, falta no
   percentil 95 (o valor que 95% dos dias não ultrapassam), maior
   sequência de dias seguidos com falta e falta diária somada. Mostra
   quando a gasolina não estava na região certa, mesmo com o ano coberto.
 - **FUT mensal:** média de cada mês, para ver em que época o parque
   trabalha mais.
+- **Cobertura efetiva por região:** quanto da demanda de cada região foi
+  servido no ano, com a refinação dela e as chegadas de comboio.
 - **Autossuficiência por região:** produção das refinarias da região
   dividida pela demanda dela, antes dos comboios.
 - **Refinarias na referência:** produção, participação na produção

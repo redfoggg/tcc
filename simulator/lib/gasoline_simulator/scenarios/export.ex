@@ -19,6 +19,12 @@ defmodule GasolineSimulator.Scenarios.Export do
     :annual_served_demand_m3,
     :annual_fut_pct,
     :annual_coverage,
+    :annual_effective_served_m3,
+    :annual_effective_coverage,
+    :coverage_north,
+    :coverage_northeast,
+    :coverage_southeast,
+    :coverage_south,
     :landed_m3,
     :excess_m3,
     :plant_stock_m3,
@@ -155,6 +161,8 @@ defmodule GasolineSimulator.Scenarios.Export do
       annual_served_demand_m3: annual.served_demand_m3,
       annual_fut_pct: annual.total_fut_pct,
       annual_coverage: annual.coverage,
+      annual_effective_served_m3: annual.effective_served_m3,
+      annual_effective_coverage: annual.effective_coverage,
       landed_m3: annual.landed_m3,
       excess_m3: annual.excess_m3,
       plant_stock_m3: annual.plant_stock_m3,
@@ -162,6 +170,11 @@ defmodule GasolineSimulator.Scenarios.Export do
       csv_path: relative,
       note: instance.meta.note
     })
+    |> Map.merge(regional_coverage(annual.regions))
+  end
+
+  defp regional_coverage(regions) do
+    Map.new(regions, &{:"coverage_#{&1.id}", &1.coverage})
   end
 
   defp manifest_failed(scenario, run, instance, reason) do
@@ -174,6 +187,12 @@ defmodule GasolineSimulator.Scenarios.Export do
       annual_served_demand_m3: nil,
       annual_fut_pct: nil,
       annual_coverage: nil,
+      annual_effective_served_m3: nil,
+      annual_effective_coverage: nil,
+      coverage_north: nil,
+      coverage_northeast: nil,
+      coverage_southeast: nil,
+      coverage_south: nil,
       landed_m3: nil,
       excess_m3: nil,
       plant_stock_m3: nil,
