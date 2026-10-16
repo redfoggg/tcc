@@ -3,7 +3,8 @@
 A bateria é um experimento separado do painel. O botão "Rodar bateria"
 roda 10 cenários, com 10 execuções cada, e grava um CSV (arquivo de
 valores separados por vírgula) por execução em
-`data/studies/<timestamp>/`. Essa pasta fica fora do git. As plantas do
+`data/studies/<timestamp>/`. A bateria e a análise dela ficam no
+repositório como resultado do trabalho. As plantas do
 painel permanecem como estão, e o ajuste de demanda e as taxas de falha
 do formulário não entram: cada cenário traz os próprios insumos.
 
