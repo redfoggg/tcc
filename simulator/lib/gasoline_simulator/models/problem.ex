@@ -1,4 +1,5 @@
 defmodule GasolineSimulator.Models.Problem do
+  alias GasolineSimulator.Data.Regions
   alias GasolineSimulator.Models.Refinery
 
   @enforce_keys [:month, :demand_m3, :landed_m3, :planning_yield]
@@ -7,6 +8,9 @@ defmodule GasolineSimulator.Models.Problem do
     :demand_m3,
     :landed_m3,
     :planning_yield,
+    :carried_deficit_m3,
+    stock_by_region: %{},
+    landed_by_region: %{},
     refineries: []
   ]
 
@@ -15,6 +19,9 @@ defmodule GasolineSimulator.Models.Problem do
           demand_m3: float(),
           landed_m3: float(),
           planning_yield: float(),
+          carried_deficit_m3: float(),
+          stock_by_region: map(),
+          landed_by_region: map(),
           refineries: [Refinery.t()]
         }
 
@@ -37,15 +44,35 @@ defmodule GasolineSimulator.Models.Problem do
       demand_m3: attrs.demand_m3,
       landed_m3: attrs.landed_m3,
       planning_yield: planning_yield(attrs),
+      carried_deficit_m3: Map.get(attrs, :carried_deficit_m3, 0.0),
+      stock_by_region: Map.get(attrs, :stock_by_region, %{}),
+      landed_by_region: Map.get(attrs, :landed_by_region, %{}),
       refineries: refineries
     })
   end
 
   @spec to_solver_input(t()) :: map()
   def to_solver_input(%__MODULE__{} = problem) do
+    scale = problem.planning_yield
+
+    regions =
+      Enum.map(Regions.ids(), fn region ->
+        stock = Map.get(problem.stock_by_region, region, 0.0)
+
+        %{
+          id: Atom.to_string(region),
+          demand: Regions.demand(problem.demand_m3, region) / scale,
+          landed: (Map.get(problem.landed_by_region, region, 0.0) + stock) / scale
+        }
+      end)
+
+    stock = problem.stock_by_region |> Map.values() |> Enum.sum()
+    refining = max(problem.demand_m3 + problem.carried_deficit_m3 - stock, 0.0)
+
     %{
-      demand: problem.demand_m3 / problem.planning_yield,
-      landed: problem.landed_m3 / problem.planning_yield,
+      demand: refining / scale,
+      landed: problem.landed_m3 / scale,
+      regions: regions,
       facilities: Enum.map(problem.refineries, &to_facility/1)
     }
   end
@@ -85,6 +112,7 @@ defmodule GasolineSimulator.Models.Problem do
   defp to_facility(%Refinery{} = refinery) do
     %{
       id: refinery.id,
+      region: Atom.to_string(Regions.of_plant(refinery.id)),
       capacity: refinery.capacity_m3,
       floor: refinery.floor_m3
     }

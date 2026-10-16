@@ -1,76 +1,70 @@
 # Metodologia dos cenários
 
 A bateria é um experimento separado do painel. O botão "Rodar bateria"
-dispara 10 cenários, com 10 execuções cada, e grava um CSV por execução.
-Os processos das refinarias do painel permanecem como estão. O ajuste de
-demanda e a porcentagem de falha do formulário ficam
-de fora: cada cenário traz os próprios insumos. A referência sorteia, em
-cada execução, uma taxa de acidente por rota, de 1% a 5%. O cenário de
-falha alta sorteia, em cada execução, uma taxa por rota de 41% a 100%.
-Nos outros oito cenários a porcentagem fica em 1. Não há estoque nacional.
+roda 10 cenários, com 10 execuções cada, e grava um CSV (arquivo de
+valores separados por vírgula) por execução em
+`data/studies/<timestamp>/`. Essa pasta fica fora do git. As plantas do
+painel permanecem como estão, e o ajuste de demanda e as taxas de falha
+do formulário não entram: cada cenário traz os próprios insumos.
 
-Cada execução resolve os 365 dias de 2025 com o mesmo MILP do Planejado.
-A pausa mínima de 30 s do painel fica desligada. As execuções correm em
-sequência. O resultado vai para `data/studies/<timestamp>/`.
+## O que vale em todos os cenários
 
-## O que permanece fixo
+Cada execução resolve os 365 dias de 2025 com o mesmo modelo do
+Planejado 2025, descrito em `docs/model_specification.md`, sem a pausa
+de 30 s do painel. Ficam fixos:
 
-Calendário de 2025, demanda curada, capacidade de processamento curada,
-as 12 refinarias do catálogo e a regra de FUT. O planejamento é
-nacional e usa a capacidade da placa. O piso de quem está no ar é o FUT
-aceitável: 94% no padrão. No cenário 10 o piso vai de 85% a 94%, um ponto por execução. O teto é
-100%. O HiGHS devolve o petróleo da campanha. No dia 1 a demanda entra
-dividida pela média nacional. Nos dias seguintes, pela gasolina realizada
-até ali sobre o petróleo processado até ali. O rendimento sorteado
-multiplica o petróleo na execução. LUBNOR continua de fora.
+- O calendário de 2025, a demanda curada e a capacidade curada.
+- As 12 refinarias do catálogo. A LUBNOR, refinaria de lubrificantes do
+  Nordeste, fica de fora porque não produz gasolina A.
+- A divisão da demanda entre Norte, Nordeste, Sudeste e Sul pela
+  população do Censo 2022 do IBGE (Instituto Brasileiro de Geografia e
+  Estatística), com o Centro-Oeste somado ao Sudeste.
+- O FUT (fator de utilização total): piso de 94% e teto de 100%. O
+  cenário 10 muda o piso.
+- A rampa de quem volta de uma parada: começa em 40% e sobe 1 ponto
+  percentual em cada dia em que o déficit do país fica em até 1 m³.
+- O prazo de cada comboio: o tempo de caminhão da estrada, com mínimo de
+  1 dia.
+- A taxa de falha dos comboios: 1%, exceto nos cenários 3 e 7.
+- A disponibilidade: as 12 plantas ficam no ar o ano inteiro, mesmo nos
+  meses em que o histórico registra parada. As paradas de manutenção,
+  como as da RNEST em fevereiro e da REVAP em outubro e novembro, ficam
+  de fora do plano. O efeito de parar plantas é medido nos cenários 2 e
+  6.
+- O rendimento: zero no histórico é tratado como decisão de mercado e
+  vira a média nacional. A REAM, que deixou de refinar depois da
+  privatização, usa a média nacional todo dia.
 
-Quando uma planta volta depois de uma parada, o piso entra em rampa: 40%
-e mais 1 ponto percentual por dia até o FUT aceitável. O planejamento
-pode usar essa planta acima do piso, até 100%, se a demanda pedir.
-
-Não há estoque nacional. Planta que produziu acima do plano abre um
-processo de entrega para a que ficou abaixo do plano. Cada comboio leva
-no máximo 30 m³ e só sai com pelo menos 20 m³. A carga fica nesse
-processo. Ela entra na demanda só no dia da chegada.
-Se o processo cai, a carga é perdida e as duas plantas são avisadas.
-Três perdas seguidas na mesma rota fazem a origem esperar 10 dias.
-Uma entrega que sai zera a contagem. A pausa não perde carga: a origem
-tenta a próxima planta com falta.
-O prazo de cada comboio é o tempo de caminhão da estrada, o teto de
-quilômetros / 60 / 24, com mínimo de 1 dia. Não há chegada no mesmo dia.
-`RPCC → RPBC` leva 3 dias e `RNEST → RPCC` leva 1 dia. O cenário 8 fecha
-três rotas por dois meses civis. Fora do bloco, nenhuma estrada fecha.
-Processo que não responde conta como planta ausente.
+Essas hipóteses, onde pesam e por quê estão em
+`docs/data_transformations.md`, seção Hipóteses e simplificações.
 
 ## Protocolo
 
-São 100 execuções. O arquivo `manifest.csv` tem uma linha por execução,
-com o choque sorteado, a nota e os totais anuais. Cada execução também gera
-`<cenario>/run_XX.csv`, com uma linha por refinaria e dia. Planta fora
-do modelo naquele dia entra com `in_model` igual a 0.
+São 100 execuções. `manifest.csv` tem uma linha por execução.
+`<cenario>/run_XX.csv` tem uma linha por refinaria e dia. Planta fora do
+modelo naquele dia entra com `in_model` igual a 0. O manifesto e o CSV
+registram tudo o que foi sorteado: par e meses de parada, rotas
+fechadas, ajustes mensais e rendimentos.
 
-No cenário de rendimento mínimo o insumo é o mesmo nas dez
-execuções. Os dez arquivos repetem o mesmo plano. Nos demais, cada
-execução sorteia de novo. O par, os meses, as rotas fechadas e os
-rendimentos usados ficam no manifesto e no CSV da execução.
-
-Rendimento 0 no histórico é decisão de mercado, não piso técnico. O
-mínimo usa só os meses válidos com rendimento estritamente
-positivo. Se a refinaria não tem nenhum, entra a média nacional de
-gasolina A, a mesma regra do sorteio do painel.
+Os cenários que usam um rendimento fixo por planta usam só meses com
+rendimento positivo. Sem nenhum, vale a média nacional de gasolina A,
+como no painel.
 
 ## Cenários
 
 ### 1. rendimento_minimo
 
-Todas as refinarias ficam no ar o ano inteiro. Em todos os dias, o
-rendimento de gasolina A de cada uma é o menor rendimento mensal válido
-observado em 2025 para aquela planta.
+Todas as refinarias ficam no ar. Em todos os dias, cada uma rende o
+menor rendimento mensal positivo que teve em 2025. O rendimento é o
+mesmo nas dez execuções. Só os sorteios de falha dos comboios mudam.
 
 ### 2. paradas_produtivas
 
-As mais produtivas são as quatro com maior volume de gasolina A
-observado em 2025:
+Cada execução sorteia duas das quatro refinarias que mais produziram
+gasolina A em 2025 e as tira do modelo por três meses consecutivos. O
+mês inicial vai de janeiro a outubro, para o bloco caber no ano. São
+sempre duas plantas, para o choque ter o mesmo tamanho nas dez
+execuções. A demanda é redistribuída entre as que ficam.
 
 | Refinaria | Gasolina A em 2025 |
 |---|---|
@@ -79,111 +73,130 @@ observado em 2025:
 | REFMAT | 3,4 milhões de m³ |
 | REVAP | 2,9 milhões de m³ |
 
-Cada execução sorteia duas dessas quatro. Elas ficam fora do modelo por
-três meses civis consecutivos. O mês inicial é sorteado entre janeiro e
-outubro, para o bloco caber em 2025. O rendimento segue o sorteio diário
-do painel. A demanda do dia é realocada nas refinarias que permanecem,
-dentro do FUT disponível de cada uma.
-
-O choque tem sempre duas plantas, para o tamanho ficar igual nas dez
-execuções. O par e o bloco de meses mudam. O manifesto registra os dois.
-
 ### 3. referencia
 
-Controle. O rendimento é sorteado a cada dia na lista mensal válida da
-refinaria. As doze ficam no ar. A demanda segue o proxy curado. Não há
-saldo nacional entre os dias. É o mesmo mecanismo do Planejado,
-percorrendo o ano direto e com as doze plantas disponíveis.
-
-Cada execução sorteia uma vez um inteiro de 1 a 5, inclusive, para cada
-uma das 66 rotas. A rota é o par de refinarias sem direção, o mesmo par
-de `Refineries.Distances`. O valor vale nos dois sentidos. O mapa entra
-em `failure_pct`. A chave da rota é a tupla ordenada, por exemplo
-`{"RECAP", "REPLAN"}`, e também o texto `RECAP|REPLAN`, com os
-identificadores em ordem. Se o mapa não tem a rota, o modelo usa a
-porcentagem do destino, como o painel. Chave ausente vale 0. O valor
-fica entre 0 e 100. Esta faixa de 1% a 5% vale só neste controle.
+O controle. As doze plantas ficam no ar, o rendimento é sorteado todo
+dia e a demanda segue o dado curado. Cada execução sorteia uma taxa de
+falha inteira de 1% a 5% para cada uma das 66 rotas. Rota é o par de
+refinarias sem direção, e a taxa vale nos dois sentidos. Só este cenário
+usa essa faixa.
 
 ### 4. choque_demanda
 
-Rendimento, plantas no ar e o prazo de caminhão seguem a referência. A
-demanda fica 15% acima do proxy curado em todos os dias. A porcentagem
-de falha fica em 1.
+Como a referência, mas a demanda fica 15% acima do dado curado em todos
+os dias.
 
 ### 5. demanda_mensal
 
-Cada execução sorteia um inteiro de -1 a 15, inclusive, para cada mês
-civil. O mesmo valor vale em todos os dias daquele mês. A demanda pode
-cair até 1% ou subir até 15% em relação ao proxy curado. O sorteio não
-se acumula de um mês para o outro. Plantas, rendimento e prazo seguem a
-referência. A porcentagem de falha fica em 1. O manifesto grava os doze
-valores na nota, no formato `demanda 1:-1 2:11`.
+Cada execução sorteia, para cada mês, um ajuste inteiro de -1% a +15%.
+O ajuste vale em todos os dias do mês e não se acumula de um mês para o
+outro. A nota do manifesto grava os doze valores, no formato
+`demanda 1:-1 2:11`.
 
 ### 6. manutencao_escalonada
 
-Cada execução sorteia uma ordem das 12 refinarias e associa uma a cada
-mês. Naquele mês a planta fica fora. Em qualquer dia há exatamente uma
-parada. O rendimento segue o sorteio diário. A porcentagem de falha fica
-em 1.
+Cada execução sorteia uma ordem das 12 refinarias e tira uma do modelo
+em cada mês. Em qualquer dia há exatamente uma parada.
 
 ### 7. falha_alta_remessa
 
-Cada execução sorteia uma vez um inteiro de 41 a 100, inclusive, para
-cada rota sem direção. 70, 80 e 100 cabem no sorteio. A faixa de 1% a
-5% do controle não entra aqui. As doze plantas ficam no ar. O rendimento
-segue o sorteio diário. O prazo é o tempo de caminhão de cada par. A chave do mapa é
-a mesma da referência.
+Cada execução sorteia uma taxa de falha inteira de 41% a 100% para cada
+rota. As doze plantas ficam no ar.
 
 ### 8. rotas_bloqueadas
 
-Cada execução sorteia três rotas entre os 66 pares de
-`Refineries.Distances` e ordena o trio. Também sorteia um bloco de dois
-meses civis consecutivos. O mês inicial cai entre janeiro e novembro.
-Nesses dois meses as três rotas ficam fechadas em todos os dias, nos
-dois sentidos, pela opção `closed_roads`. Fora do bloco a função devolve
-lista vazia. A porcentagem de falha permanece 1. As plantas ficam no ar.
-O rendimento segue o sorteio diário. O prazo é o tempo de caminhão de cada par. O
-manifesto grava as rotas e os meses no campo `note`, no formato
-`rotas RECAP|REPLAN REDUC|REFAP REPAR|REVAP meses 3|4`.
+Cada execução sorteia três rotas entre as 66 e um bloco de dois meses
+consecutivos, começando entre janeiro e novembro. Nesses meses as três
+estradas ficam fechadas nos dois sentidos. A nota grava as rotas e os
+meses, no formato `rotas RECAP|REPLAN REDUC|REFAP REPAR|REVAP meses 3|4`.
 
 ### 9. campanha_estavel
 
 Cada execução sorteia um rendimento por refinaria e o mantém nos 365
-dias. As plantas ficam no ar. Demanda e trânsito seguem a referência.
-Na referência, o rendimento muda todo dia. Aqui a campanha da planta
-é estável. A porcentagem de falha fica em 1.
+dias. Na referência, o rendimento muda todo dia.
 
 ### 10. mobilidade_fut
 
-As doze plantas ficam no ar. A falha logística fica em 1. O prazo é o
-tempo de caminhão. Uma campanha de rendimento é sorteada uma vez e
-repetida nas dez execuções: cada planta guarda o mesmo rendimento nos
-365 dias, e esse rendimento não muda de uma execução para outra.
-
-O piso de FUT muda com a execução. A execução 1 usa 85%. Cada execução
-seguinte sobe 1 ponto percentual, até 94% na execução 10. O teto continua
-100%. O plano pode usar a planta acima do piso, até esse teto, se a
-demanda pedir. O manifesto grava o piso em `fut_lock`.
+Uma campanha de rendimento é sorteada uma vez e repetida nas dez
+execuções: cada planta guarda o mesmo rendimento o ano inteiro. O que
+muda é o piso de FUT, de 85% na execução 1 a 94% na execução 10, um ponto
+por execução. O teto continua em 100%. O manifesto grava o piso em
+`fut_lock`.
 
 ## Arquivos
 
-`manifest.csv` junta cenário, execução, modo de rendimento, ajuste de
-demanda, dias de trânsito (`par` em todos os cenários), disponibilidade,
-trava de FUT, plantas e meses fora, totais anuais, o caminho do CSV
-detalhado e a nota. No cenário 8 a nota traz as rotas fechadas e os meses.
-No cenário 5 a nota traz o ajuste de cada mês. Parada de uma refinaria,
-um mês de cada vez, é o cenário 6.
+Colunas de `manifest.csv`:
 
-O CSV da execução traz, por refinaria e dia, o rendimento usado, a
-alocação, o petróleo da campanha, as outras cargas, a capacidade, o FUT
-da planta, se ela
-entrou no modelo, e os totais do dia: demanda, produção, déficit,
-chegadas, excedente, estoque da planta (produzido menos enviado) e FUT total.
+| Coluna | Conteúdo |
+|---|---|
+| `scenario_id`, `scenario_name`, `run`, `status` | Cenário, execução e se o ano terminou (`ok`) ou falhou |
+| `yield_mode` | Como o rendimento foi escolhido |
+| `demand_adjustment_pct` | Ajuste de demanda único, em % |
+| `transit_days` | Sempre `par`: o prazo vem da estrada de cada par |
+| `availability`, `offline_refineries`, `offline_months` | Regra de plantas no ar, quais saíram e em que meses |
+| `fut_lock` | Piso de FUT da execução |
+| `annual_demand_m3`, `annual_production_m3` | Demanda e gasolina A produzida no ano |
+| `annual_served_demand_m3`, `annual_deficit_m3`, `annual_coverage` | Demanda atendida, déficit e cobertura do ano |
+| `annual_fut_pct` | FUT do ano |
+| `landed_m3`, `excess_m3`, `plant_stock_m3`, `lost_m3` | Chegadas, excedente, tanque no fim do ano e perdas no transporte |
+| `csv_path`, `note` | Caminho do CSV da execução e o que foi sorteado |
 
-A pasta `data/studies/` fica de fora do git.
+Colunas de `run_XX.csv`, por refinaria e dia: `date`, `refinery_id`,
+`uf` (unidade da federação), `in_model`, `simulated_yield` (rendimento
+sorteado), `allocated_m3` (gasolina produzida), `petroleum_processed_m3`,
+`other_charges_m3`, `processing_capacity_m3`, `fut_pct`, `active` e
+`stock_m3` (tanque no fim do dia). As colunas `day_*` repetem os totais
+do país no dia em todas as linhas daquele dia: demanda, produção,
+déficit, chegadas, excedente e FUT. Somar essas colunas em todas as
+linhas multiplica o valor por 12. As contas de cada coluna estão em
+`docs/model_specification.md`.
+
+## Análise
+
+```
+python3 data/scripts/analyze_study.py [data/studies/<pasta>]
+```
+
+Sem argumento, o script usa a bateria mais recente. Só aceita pastas
+dentro de `data/studies` e usa apenas a biblioteca padrão do Python. Ele
+grava em `<pasta>/analysis/` um `report.md` com as tabelas abaixo e os
+CSVs com todos os números: `scenario_annual.csv`,
+`scenario_vs_reference.csv`, `scenario_daily.csv`,
+`scenario_monthly.csv`, `scenario_refineries.csv` e
+`scenario_regions.csv`.
+
+Para cada cenário, o resumo das execuções que terminaram traz:
+
+| Medida | Significado |
+|---|---|
+| Média e desvio padrão (dp) | Valor típico e quanto as execuções se afastam dele |
+| Coeficiente de variação (CV) | Desvio padrão dividido pela média. Compara a dispersão de medidas em escalas diferentes |
+| Mínimo e máximo | Melhor e pior execução |
+| IC 95% | Intervalo de confiança de 95% da média, pela distribuição t de Student com $n-1$ graus de liberdade, onde $n$ é o número de execuções |
+| Δ contra a referência | Média do cenário menos média da referência. A diferença é marcada quando o intervalo de 95% do teste de Welch, que compara médias com variâncias diferentes, não inclui zero |
+
+O relatório tem estas seções:
+
+- **Resultado anual:** cobertura, déficit, produção, FUT e perdas, e
+  quantas execuções cobriram 100% da demanda do ano.
+- **Efeito contra a referência:** quanto cada choque muda cobertura,
+  déficit, produção e FUT.
+- **Referência contra o Histórico 2025:** produção, demanda, saldo e FUT.
+- **Fechamento diário:** dias com falta, maior falta diária, falta no
+  percentil 95 (o valor que 95% dos dias não ultrapassam), maior
+  sequência de dias seguidos com falta e falta diária somada. Mostra
+  quando a gasolina não estava na região certa, mesmo com o ano coberto.
+- **FUT mensal:** média de cada mês, para ver em que época o parque
+  trabalha mais.
+- **Autossuficiência por região:** produção das refinarias da região
+  dividida pela demanda dela, antes dos comboios.
+- **Refinarias na referência:** produção, participação na produção
+  nacional, FUT, dias no teto (FUT de pelo menos 99,5%) e dias fora do
+  modelo.
 
 ## Ressalva
 
-A demanda proxy é afetada pelos números de mercado: as vendas de
-gasolina C foram observadas no regime de preços vigente. O modelo a
-trata como exógena, o que é uma simplificação.
+A demanda curada vem das vendas observadas de gasolina C (gasolina A
+misturada com etanol anidro, a que se vende nos postos), no regime de
+preços de 2025. O modelo a trata como dado externo, o que é uma
+simplificação.

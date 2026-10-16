@@ -3,102 +3,94 @@
 Caminhos relativos a `simulator/`. A matemática está em
 `docs/model_specification.md`.
 
+O aplicativo é Elixir, rodando na BEAM, a máquina virtual do Erlang. Cada
+refinaria e cada comboio é um processo próprio. Um GenServer é um
+processo servidor do OTP, a biblioteca padrão do Erlang para processos
+supervisionados. O solver é Rust, chamado por um NIF (função nativa
+implementada fora da BEAM) gerado pelo Rustler.
+
 ## Módulos
 
 | Módulo | Papel |
 |---|---|
-| `Data.Repository` | Lê demanda, $K^P$ e rendimentos mensais dos CSVs |
-| `Data.Catalog` | Nomes e UFs das 12 refinarias |
-| `Refineries.Plant` | GenServer de uma refinaria (`restart: :temporary`). Avisa origem e destino se a entrega cai. Conta perdas seguidas da rota e pausa 10 dias depois de 3 |
-| `Refineries.Delivery` | Processo de uma carga em trânsito (`restart: :temporary`) |
-| `Refineries.DeliverySupervisor` | Árvore das entregas. Falha logística encerra o processo da carga |
-| `Refineries.Distances` | Quilômetros de rodovia de cada par e os dias de caminhão |
-| `Refineries.Logistics` | Pergunta quem responde, soma o que chegou e manda a sobra de quem passou do plano para quem ficou abaixo |
-| `Refineries.Supervisor` | Árvore `:one_for_one` das 12 plantas |
+| `Data.Repository` | Lê demanda, capacidade, outras cargas e rendimentos mensais dos CSVs |
+| `Data.Catalog` | Nomes e UFs (unidades da federação) das 12 refinarias |
+| `Data.Regions` | População de cada região e a região de cada refinaria |
 | `Data.Historical` | Lê `historical_2025_summary.json` |
+| `Refineries.Plant` | GenServer de uma refinaria: tanque, rampa, envio de comboios, contagem de perdas e pausa de rota |
+| `Refineries.Delivery` | Processo de um comboio na estrada |
+| `Refineries.DeliverySupervisor` | Supervisiona os comboios e encerra o que falha no sorteio |
+| `Refineries.Distances` | Quilômetros de rodovia de cada par e dias de caminhão |
+| `Refineries.Logistics` | Soma as chegadas do dia, calcula pedido e oferta de cada região e envia os comboios |
+| `Refineries.Supervisor` | Supervisiona as 12 plantas. Uma planta que cai não derruba as outras |
 | `Scenarios.YieldSampling` | Sorteia $R_{i,d}$ na lista mensal válida da refinaria |
-| `Models.Overrides` | Ajuste de demanda |
-| `Models.Problem` | Monta o dia e a entrada do NIF |
-| `Models.Refinery` | Struct da refinaria no problema |
-| `Models.Result` | Junta solução nativa, FUT e rendimento usado |
+| `Models.Overrides` | Ajuste de demanda, único ou por mês |
+| `Models.Problem` | Monta o dia, os limites de cada planta e a entrada do solver |
+| `Models.Refinery` | Dados de uma refinaria dentro do problema do dia |
+| `Models.Result` | Junta a resposta do solver, a gasolina realizada e o fechamento de cada região |
 | `Models.Plan` | Estado em memória de uma execução |
-| `Scenarios.Runner` | Sequência dos 365 dias (no painel, no mínimo 30 s) |
-| `Scenarios.Orchestrator` | Planos, monitor das plantas e PubSub |
-| `Scenarios.Methodology` | Onze cenários da bateria e a montagem de cada execução |
-| `Scenarios.Study` | Bateria em segundo plano, separada das plantas do painel |
+| `Scenarios.Runner` | Percorre os 365 dias e guarda o que passa de um dia para o outro |
+| `Scenarios.Orchestrator` | Execuções do painel, monitor das plantas e PubSub (avisos do servidor para a página) |
+| `Scenarios.Methodology` | Os dez cenários da bateria e a montagem de cada execução |
+| `Scenarios.Study` | Roda a bateria em segundo plano, sem mexer nas plantas do painel |
 | `Scenarios.Export` | CSV de cada execução e `manifest.csv` |
-| `Solver` / `Solver.Native` | Timeout Elixir e NIF Rustler |
+| `Solver` / `Solver.Native` | Limite de tempo e chamada ao NIF |
 
-Structs de domínio ficam em `lib/gasoline_simulator/models/`.
+## Um dia de simulação
 
-## Resolução nativa
+`Scenarios.Runner` faz, em cada dia:
 
-`native/gasoline_solver` usa `good_lp` e HiGHS. Uma chamada planeja o
-dia inteiro. O piso de cada planta é o FUT aceitável, $94\%$ no padrão,
-ou o degrau da rampa. O teto é $100\%$. A função soma o déficit nacional
-(peso $1$ por m³), o excesso (peso $10^{-4}$) e o uso dos tetos (peso
-$10^{-4}$ por ponto de $P/C$). O plano devolvido é o petróleo da campanha
-de cada planta. O HiGHS não vê o rendimento sorteado. No dia 1 a demanda
-de gasolina entra dividida pela média nacional. Do dia 2 em diante entra
-dividida pela gasolina realizada até o dia anterior, sobre o petróleo
-processado até o dia anterior. Na execução, a gasolina da
-planta é esse petróleo vezes
-$R_{i,d}$, e o déficit do dia é recalculado com esse volume. Não há teto
-global de petróleo. Cada planta cabe em
-$C_{i,d} = \max(K^P_{i,d} - O_{i,d}, 0)$.
-$O_{i,d}$ são as outras cargas observadas do mês, em base diária.
-Planta que já está no ar no dia 1 oferece piso no FUT aceitável. O padrão
-é $0{,}94$ e entra por `sustainable_utilization_ratio`. Planta religada
-oferece piso em $\rho = 0{,}40$ e sobe $1$ p.p. por dia até esse valor.
-O planejamento pode subir qualquer planta até $1$ para cobrir a demanda.
-Padrão Elixir: 5.000 ms por dia. `Optimal` e
-`GapLimit` são aceitos.
+1. Pergunta às plantas quem responde e recebe as cargas que chegam.
+2. Monta o problema com o tanque de cada região, as chegadas, o déficit
+   de ontem, o rendimento de planejamento e o piso de cada planta.
+3. Chama o solver uma vez, para todas as plantas.
+4. Calcula a gasolina realizada com o rendimento sorteado e credita no
+   tanque de cada planta.
+5. Envia os comboios por `Refineries.Logistics`.
+6. Fecha cada região, tira a demanda dos tanques e avisa cada planta do
+   próprio plano e do déficit do país.
+7. Guarda para amanhã o déficit, o rendimento acumulado e a dívida de
+   cada planta contra o próprio plano.
 
-Timeout nativo ou `Task.yield` viram `:timeout` e interrompem o ano. O NIF
-em dirty CPU não é cancelável.
+As plantas não negociam entre si e não veem o plano umas das outras.
 
-Falhas genuínas: `:solver_failure`, `:solver_panic`, `:timeout`. Déficit
-com `status :ok` não interrompe.
+## Solver
+
+`native/gasoline_solver` usa a biblioteca `good_lp` com o HiGHS. O
+limite padrão é 5.000 ms por dia. O HiGHS aceita a solução ótima ou a
+que para no limite de folga de otimalidade. Estouro de tempo vira
+`:timeout` e interrompe o ano. O NIF roda num agendador de CPU separado
+e não pode ser cancelado no meio. As falhas possíveis são
+`:solver_failure`, `:solver_panic` e `:timeout`. Déficit não é falha: o
+dia termina com `status :ok`.
 
 ## Resultado
 
-Cada dia traz saldo, FUT Total, processamento implícito, capacidade bruta,
-estoques, produção, demanda atendida, déficit, cobertura e as refinarias
-no ar naquele dia, com o `simulated_yield` usado. Ativação se o binário
-for maior que 0,5. Planta derrubada no painel não entra em $F_d$.
-Processo que não responde também não entra. Não há estoque nacional. A
-planta que passou do plano envia a sobra para a que ficou mais abaixo,
-em comboios de no máximo 30 m³. Um comboio só sai com pelo menos 20 m³.
-O volume entra na demanda no dia da chegada. O prazo mínimo é 1 dia. A
-taxa de falha vai de 0 a 100 e é sorteada quando a entrega vai sair. A
-chave da rota, tupla ordenada ou texto `ORIGEM|DESTINO`, vale primeiro.
-Sem ela, vale a porcentagem do destino, como no painel. 1 é o padrão de
-quem não configura o painel. 100 perde a carga. Três perdas seguidas na
-rota fazem a origem esperar 10 dias. Uma entrega que sai zera a contagem.
-A pausa não perde carga: a origem tenta a próxima planta com falta. Se
-ninguém recebe, o volume fica na origem. O Runner não guarda quem
-recebeu. Um cenário pode passar `closed_roads`, a função do dia que
-lista os pares de estrada fechados. O par fecha nos dois sentidos. O
-cenário de rotas bloqueadas fecha três pares por dois meses. O painel
-não fecha estrada. Toda remessa usa o tempo de caminhão de cada par, com
-mínimo de 1 dia. A
-referência sorteia falha de 1% a 5% em cada rota. A falha alta sorteia
-de 41% a 100%. Os outros cenários deixam a porcentagem em 1.
-
-O mensal e o anual somam os dias. O painel mostra só esses agregados.
+Cada dia traz demanda, produção, déficit, excedente, chegadas, tanque de
+cada planta, fechamento de cada região, FUT (fator de utilização total)
+e as refinarias no ar, com o rendimento sorteado. O mês soma os dias. O
+ano soma os dias e recalcula demanda atendida, déficit, excedente e
+cobertura a partir da produção do ano menos as perdas no transporte.
 
 ## Painel
 
-A página está em português. Planos vivem só na memória do `GenServer`.
-O cartão de cada refinaria mostra o FUT do último dia resolvido e a
-gasolina A acumulada no Planejado em curso. Os dois valores atualizam
-a cada dia. Planta ausente fica em 0% e mantém o volume já produzido.
+A página é Phoenix LiveView, atualizada pelo servidor sem recarregar. As
+execuções vivem só na memória. O painel mostra:
+
+- O Histórico 2025 e o Planejado 2025, com indicadores do ano e tabela
+  mensal.
+- A tabela por região, com demanda, produção, demanda atendida, tanque
+  no fim do ano e cobertura.
+- O cartão de cada refinaria, com o FUT do último dia, a gasolina
+  acumulada e o tanque. Planta ausente fica em 0%.
+- As entregas a caminho, agrupadas por origem e destino. Cinco rotas
+  aparecem, e "Ver mais" mostra o resto.
+
+O ano do painel leva pelo menos 30 s, para dar tempo de derrubar uma
+planta no meio.
 
 ## Bateria
 
-O botão "Rodar bateria" dispara os dez cenários de
-`docs/methodology.md`, dez vezes cada, e grava CSV em `data/studies/`.
-Essa execução chama o `Runner` com a própria lista de plantas no ar.
-Os GenServers do painel permanecem como o usuário os deixou. A demanda
-vem do cenário. O ano da bateria segue direto, sem a espera de 30 s do
-painel.
+O botão "Rodar bateria" roda os dez cenários de `docs/methodology.md`,
+dez vezes cada, e grava os CSVs em `data/studies/`. A bateria usa a
+própria lista de plantas no ar e não espera os 30 s.

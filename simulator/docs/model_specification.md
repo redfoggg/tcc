@@ -1,234 +1,327 @@
 # Especificação do modelo
 
-O Planejado 2025 resolve um MILP por dia. Não há estoque nacional. Planta
-que produziu acima do plano envia a sobra para a que ficou abaixo. Esse
-volume só entra na demanda no dia em que chega. O prazo mínimo é
-1 dia. O painel agrega os 365 dias em mês e ano. O Histórico 2025 não
-é uma execução do modelo. Fontes e conversões: `docs/data_report.md` e
-`docs/data_transformations.md`. Contrato de software:
-`docs/model_runtime.md`.
+O Planejado 2025 resolve um problema por dia, nos 365 dias do ano. Cada
+problema é um MILP (programação linear inteira mista), resolvido pelo
+HiGHS, um solver de código aberto. O plano é central: uma única chamada
+decide quanto petróleo cada refinaria no ar processa. Depois, o
+rendimento sorteado transforma esse petróleo em gasolina A. Os comboios
+levam a sobra das regiões que refinam mais do que consomem para as que
+refinam menos. O resultado do dia volta como dado para o plano do dia
+seguinte. O Histórico 2025 não usa este modelo.
 
-## Conjuntos
+Gasolina A é a gasolina sem etanol, como sai da refinaria. Fontes dos
+dados: `docs/data_report.md`. Conversões: `docs/data_transformations.md`.
+Código: `docs/model_runtime.md`.
 
-- $T$: os 365 dias de 2025
-- $F$: 12 refinarias de `estudo_tcc.typ` (REAM, RECAP, REDUC, REFAP,
-  REFMAT, REGAP, REPAR, REPLAN, REVAP, RNEST, RPBC, RPCC). LUBNOR fica de
-  fora: é planta de lubrificantes e asfalto e não produz gasolina A.
-- Cada $i \in F$ é um GenServer. O dia $d$ usa só $F_d$: plantas que o
-  cenário manteve e que respondem. Processo ausente, ou chamada que cai,
-  tira $i$ de $F_d$. Recuperação devolve $i$ nos dias seguintes. O MILP
-  realoca $D_d$ em $F_d$.
+## Índices e conjuntos
 
-## Símbolos
+| Símbolo | Significado |
+|---|---|
+| $d$ | Dia de 2025, de 1º de janeiro a 31 de dezembro |
+| $i$ | Refinaria |
+| $F$ | As 12 refinarias do catálogo |
+| $F_d$ | Refinarias no ar no dia $d$: o cenário as mantém e o processo delas responde |
+| $r$ | Região de demanda: Norte, Nordeste, Sudeste ou Sul |
+| $F_{r,d}$ | Refinarias de $F_d$ que ficam na região $r$ |
+
+| Região | Refinarias | População (Censo 2022 do IBGE) | Fatia $s_r$ |
+|---|---|---:|---:|
+| Norte | REAM | 17.354.884 | 8,55% |
+| Nordeste | REFMAT, RNEST, RPCC | 54.658.515 | 26,91% |
+| Sudeste | RECAP, REDUC, REGAP, REPLAN, REVAP, RPBC | 101.129.651 | 49,80% |
+| Sul | REFAP, REPAR | 29.937.706 | 14,74% |
+
+IBGE é o Instituto Brasileiro de Geografia e Estatística. O Sudeste soma
+84.840.113 habitantes do próprio Sudeste e 16.289.538 do Centro-Oeste,
+que não tem refinaria no catálogo. O total é 203.080.756. Os nomes de
+cada sigla de refinaria estão em `docs/refinery_distances.md`. A LUBNOR,
+refinaria de lubrificantes do Nordeste, fica de fora porque não produz
+gasolina A.
+
+No Planejado, $F_d = F$ em todos os dias, salvo planta derrubada no
+painel. A hipótese é que as paradas do histórico, como as de manutenção
+da RNEST e da REVAP, não fazem parte do plano. O efeito de tirar plantas
+do ar é estudado nos cenários de parada de `docs/methodology.md`.
+
+## Dados de cada dia
+
+Os valores mensais curados são divididos pelos dias do mês.
 
 | Símbolo | Significado | Unidade |
 |---|---|---|
-| $R_{i,d}$ | Rendimento simulado de gasolina A sobre petróleo | meses válidos de $i$ em 2025 |
-| $\rho_{i,d}$ | Teto de utilização de $i$ no dia $d$. Não é o FUT realizado | adimensional, $[0{,}40,\ 1]$ |
-| $K^G_{i,d}$ | Coluna curada teórica. Não entra no Planejado | m³/dia |
-| $K^P_{i,d}$ | Capacidade bruta de processamento | m³/dia |
-| $O_{i,d}$ | Outras cargas observadas, já na torre | m³/dia |
-| $L_{i,d}$ | Piso de petróleo da campanha | m³/dia |
-| $D_d$ | Proxy de demanda de gasolina A, já ajustado | m³ |
-| $x_{i,d}$ | Gasolina realizada, $P_{i,d} R_{i,d}$ | m³ |
-| $y_{i,d}$ | Ativação | $\{0, 1\}$ |
-| $u_d$ | Déficit | m³ |
-| $A_d$ | Gasolina que chegou de uma remessa no dia $d$ | m³ |
-| $E_d$ | Excedente do dia, retido na planta ou embarcado | m³ |
-| $P_{i,d}$ | Petróleo da campanha decidido pelo plano | m³/dia |
+| $D^{\text{base}}_d$ | Demanda curada de gasolina A do país | m³ |
+| $a$ | Ajuste de demanda escolhido no painel ou no cenário | % |
+| $K^P_{i,d}$ | Capacidade nominal de processamento (placa) da refinaria | m³ |
+| $O_{i,d}$ | Outras cargas observadas, que já ocupam parte da placa | m³ |
+| $R_{i,d}$ | Rendimento sorteado: gasolina A por m³ de petróleo | adimensional |
+| $R^{\text{BR}}$ | Rendimento médio do parque nacional, 0,2685 | adimensional |
+| $\rho^{\text{base}}_{i,d}$ | FUT aceitável da planta: 0,94 no padrão ou o degrau da rampa | fração da placa |
 
-A demanda e as capacidades diárias são o valor mensal curado dividido pelos
-dias daquele mês. $R_{i,d}$ é sorteado por refinaria-dia, com reposição,
-entre os rendimentos mensais válidos daquela planta em 2025. O HiGHS não
-vê esse sorteio. O denominador é petróleo nacional mais importado. Outras
-cargas ficam de fora. Válido: petróleo $> 0$ e A/petróleo $\le 1$. Se o
-valor sorteado (ou a lista) é $0$, usa-se a média nacional de gasolina A
-da ANP. Zero no histórico é decisão de mercado, não teto técnico.
+Outras cargas são resíduos reprocessados na destilação junto com o
+petróleo. Elas estão explicadas em `docs/other_charges.md`. FUT é o
+fator de utilização total: a fração da placa que a destilação ocupa.
+
+## Demanda
 
 $$
-R_{i,d} =
-\begin{cases}
-R^{\text{BR}} & \text{se o sorteio é } 0 \\
-R_{i,\text{mês}} & \text{caso contrário}
-\end{cases}
+D_d = D^{\text{base}}_d \left(1 + \frac{a}{100}\right)
+\qquad
+D_{r,d} = s_r \, D_d
 $$
 
-$\rho_{i,d}$ é a fração máxima de $K^P_{i,d}$ que a torre de $i$ pode
-ocupar no dia $d$. $O_{i,d}$ é o volume observado de outras cargas do mês,
-repartido pelos dias. Esse volume já ocupa a placa. A campanha de
-petróleo fica com o restante:
+$D_d$ é a demanda do país no dia e $D_{r,d}$ é a parte da região $r$. A
+fatia $s_r$ é a população da região dividida pela do país. No cenário de
+demanda mensal, $a$ muda a cada mês.
+
+## Rendimento
+
+$R_{i,d}$ é sorteado, com reposição, entre os rendimentos mensais
+válidos da própria refinaria em 2025. Válido quer dizer que houve
+petróleo processado e que a gasolina A não passou do petróleo. Sorteio
+igual a 0, ou lista vazia, vira $R^{\text{BR}}$. A hipótese é que o zero
+foi decisão de mercado, não limite técnico. A REAM não tem mês válido,
+porque depois da privatização deixou de refinar, e usa $R^{\text{BR}}$
+todo dia. As hipóteses, onde pesam e por quê estão em
+`docs/data_transformations.md`, seção Hipóteses e simplificações.
+
+O plano não conhece $R_{i,d}$. Ele usa o rendimento de planejamento
+$\bar R_d$:
 
 $$
-P_{i,d} \le \rho_{i,d}\, K^P_{i,d} - O_{i,d}
+\bar R_1 = R^{\text{BR}}
+\qquad
+\bar R_d = \frac{\sum_{t<d} \sum_i x_{i,t}}{\sum_{t<d} \sum_i P_{i,t}}
+\quad (d > 1)
 $$
 
-O FUT da torre, $(P_{i,d}+O_{i,d})/K^P_{i,d}$, fica entre o piso da planta
-e $1$. Dentro do dia, o piso e $O_{i,d}$ são dados. O teto de petróleo da
-campanha é
+O numerador é a gasolina realizada até a véspera, e o denominador é o
+petróleo processado até a véspera. $R^{\text{BR}}$ é a média simples dos
+12 valores mensais da ANP (Agência Nacional do Petróleo, Gás Natural e
+Biocombustíveis): em cada mês, gasolina A de todas as refinarias do país
+dividida pelo petróleo delas.
+
+## Faixa de cada planta
+
+O plano decide $P_{i,d}$, o petróleo que a refinaria processa no dia,
+sem contar as outras cargas. Ele fica entre o piso $L_{i,d}$ e o teto
+$C_{i,d}$:
 
 $$
-C_{i,d} = \max(K^P_{i,d} - O_{i,d},\ 0)
+C_{i,d} = \max\!\left(K^P_{i,d} - O_{i,d},\ 0\right)
+\qquad
+L_{i,d} = \min\!\left(\max\!\left(\rho^{\min}_{i,d} K^P_{i,d} - O_{i,d},\ 0\right),\ C_{i,d}\right)
 $$
 
-O piso de cada planta é o FUT aceitável da simulação. O padrão é
-$0{,}94$. O cenário de mobilidade usa $0{,}92$, $0{,}93$ ou $0{,}94$.
-O teto do planejamento é $100\%$. Planta religada tem piso na rampa,
-$\rho = 0{,}40$, subindo $1$ p.p. por dia até o FUT aceitável.
+O teto deixa a destilação em 100% da placa. O piso deixa a destilação em
+$\rho^{\min}_{i,d}$ da placa. As duas contas descontam $O_{i,d}$, porque
+as outras cargas já ocupam a torre.
 
-A nameplate $K^P$ é o máximo físico. O piso de petróleo que o
-planejamento recebe é
+O piso do dia é
 
 $$
-L_{i,d} = \max(\rho^{\min}_{i,d}\, K^P_{i,d} - O_{i,d},\ 0)
+\rho^{\min}_{i,d} = \min\!\left(1,\ \rho^{\text{base}}_{i,d} + \frac{Q_{i,d-1}}{\bar R_d \, K^P_{i,d}}\right)
 $$
 
-e o teto é a mesma conta com $\rho = 1$. O rendimento sorteado não entra
-nessas duas contas.
-
-## Otimização diária
-
-Não há orçamento global de petróleo. O HiGHS faz um planejamento para o
-país e devolve a cada planta o petróleo da campanha. Para mirar a demanda
-de gasolina, converte $D_d$ e $A_d$ por um rendimento de planejamento.
-No dia 1 esse rendimento é a média nacional $R^{\text{BR}}$. Depois de
-cada dia ele vira a gasolina realizada até ali dividida pelo petróleo
-processado até ali. Não usa o $R_{i,d}$ do dia.
-
-Toda refinaria em $F_d$ fica ligada: $y_{i,d} = 1$. Planta derrubada no
-painel sai de $F_d$ e não entra no dia. Não há saldo nacional carregado
-de um dia para o outro.
-
-A função é
+$Q_{i,d-1}$ é a dívida da planta: quanto ela já rendeu de gasolina abaixo
+do próprio plano. Dividir por $\bar R_d K^P_{i,d}$ converte esse volume em
+fração da placa. A dívida muda assim:
 
 $$
-\min \; u_d + 10^{-4} E_d + 10^{-4} \sum_{i \in F_d \,:\, C_{i,d} > 0} \frac{P_{i,d}}{C_{i,d}}
+Q_{i,d} = \max\!\left(0,\ Q_{i,d-1} + P_{i,d} \bar R_d - x_{i,d}\right),
+\qquad Q_{i,0} = 0
 $$
 
-Dentro do solver, $u_d$ e $E_d$ estão em petróleo, com a demanda já
-dividida por $R^{\text{BR}}$. $u_d$ tem peso $1$ por m³. $E_d$ tem peso
-$10^{-4}$. O terceiro termo reparte o petróleo que falta entre as plantas.
+$P_{i,d} \bar R_d$ é a gasolina que o plano esperava, e $x_{i,d}$ é a que
+saiu. Dia ruim aumenta a dívida e sobe o piso no dia seguinte. Dia bom
+reduz a dívida.
 
-## Restrições
+$\rho^{\text{base}}_{i,d}$ vale 0,94 para quem está no ar. No cenário de
+mobilidade de FUT vai de 0,85 a 0,94. Planta que volta de uma parada
+entra numa rampa: o degrau começa em 0,40 e sobe 0,01 em cada dia em que
+o déficit do país, $U_d$, fica em até 1 m³. Quando chega ao FUT aceitável,
+a rampa acaba. O plano sempre pode subir a planta até 100%.
+
+## Plano do dia
+
+Variáveis, todas em m³ de petróleo:
+
+| Símbolo | Significado |
+|---|---|
+| $P_{i,d} \ge 0$ | Petróleo processado pela refinaria $i$ |
+| $y_{i,d} \in \{0,1\}$ | Planta ligada. Fica fixa em 1 para toda $i \in F_d$ |
+| $u_{r,d} \ge 0$ | Falta da região $r$ |
+| $E_{r,d} \ge 0$ | Sobra da região $r$ |
+| $u_d \ge 0$ | Falta do país |
+| $E_d \ge 0$ | Sobra do país |
+
+Dados que o plano recebe, em m³ de gasolina:
+
+| Símbolo | Significado |
+|---|---|
+| $A_{r,d}$, $A_d$ | Gasolina que chegou de comboio hoje, na região e no país |
+| $S_{r,d}$, $S_d$ | Tanque de abertura: gasolina que sobrou de ontem, na região e no país |
+| $U_{d-1}$ | Déficit realizado ontem, definido em Execução do dia |
+
+Função objetivo:
 
 $$
-0 \le P_{i,d} \le y_{i,d} \, C_{i,d}
+\min \ \sum_r u_{r,d} + u_d + 10^{-4}\left(\sum_r E_{r,d} + E_d\right) + 10^{-4} \sum_{i \in F_d,\ C_{i,d} > 0} \frac{P_{i,d}}{C_{i,d}}
+$$
+
+- Cada m³ de falta, regional ou nacional, custa 1. É o termo que manda.
+- Cada m³ de sobra custa $10^{-4}$. Sobrar é aceito, mas o plano evita
+  produzir sem motivo.
+- O último termo soma a fração do teto que cada planta usa, com peso
+  $10^{-4}$. Sem falta para cobrir, ele deixa a planta no piso. Entre
+  duas plantas, sobe primeiro a de teto maior, porque cada m³ dela pesa
+  menos nesse termo.
+
+Restrições:
+
+$$
+y_{i,d} \, L_{i,d} \le P_{i,d} \le y_{i,d} \, C_{i,d}
 $$
 
 $$
-P_{i,d} \ge y_{i,d} \, L_{i,d}
+\sum_{i \in F_{r,d}} P_{i,d} + u_{r,d} + \frac{A_{r,d} + S_{r,d}}{\bar R_d} - E_{r,d} = \frac{D_{r,d}}{\bar R_d}
+\quad \text{para cada região } r
 $$
 
 $$
-L_{i,d} \le C_{i,d}
+\sum_{i \in F_d} P_{i,d} + u_d + \frac{A_d}{\bar R_d} - E_d = \frac{\max\!\left(D_d + U_{d-1} - S_d,\ 0\right)}{\bar R_d}
 $$
 
-Dentro do HiGHS o balanço é em petróleo, com $D_d$ e $A_d$ divididos pelo
-rendimento de planejamento daquele dia. Depois da execução o balanço do
-dia é em gasolina:
+A primeira mantém cada planta na própria faixa. A segunda fecha cada
+região com a refinação dela, a falta, o que chegou e o tanque dela. A
+terceira fecha o país. O alvo nacional soma a falta de ontem e desconta o
+tanque, então sobra de um mês reduz o que o mês seguinte precisa
+refinar. Dividir por $\bar R_d$ converte gasolina em petróleo. Quando uma
+região curta já está no teto, só a restrição nacional ainda tem falta, e
+o plano sobe as plantas das outras regiões.
+
+## Execução do dia
+
+A ordem é:
+
+1. As cargas que chegam hoje entram no tanque de destino ($A_{r,d}$).
+2. O plano decide $P_{i,d}$.
+3. Cada planta produz $x_{i,d} = P_{i,d} R_{i,d}$, que entra no tanque
+   dela. Na região, $X_{r,d} = \sum_{i \in F_{r,d}} x_{i,d}$.
+4. Saem os comboios. $B_{r,d}$ é o volume que saiu da região, contando
+   o que se perde na estrada.
+5. Cada região fecha o dia:
 
 $$
-A_d + \sum_i P_{i,d} R_{i,d} + u_d - D_d - E_d = 0
+u^{\text{exe}}_{r,d} = \max\!\left(D_{r,d} - (S_{r,d} + X_{r,d} + A_{r,d} - B_{r,d}),\ 0\right)
 $$
 
 $$
-P_{i,d} + O_{i,d} \le \rho_{i,d}\, K^P_{i,d}
+E^{\text{exe}}_{r,d} = \max\!\left(X_{r,d} + A_{r,d} - B_{r,d} - D_{r,d},\ 0\right)
 $$
 
 $$
-u_d \ge 0, \quad E_d \ge 0, \quad A_d \ge 0, \quad y_{i,d} = 1
+S_{r,d+1} = \max\!\left(S_{r,d} + X_{r,d} + A_{r,d} - B_{r,d} - D_{r,d},\ 0\right)
 $$
 
-$A_d$ é a soma do que as plantas presentes receberam naquele dia. $E_d$ não
-passa para o dia seguinte como saldo do país.
+$u^{\text{exe}}$ é a demanda que a região não teve como cobrir hoje.
+$E^{\text{exe}}$ é o quanto a gasolina nova do dia passou da demanda.
+$S_{r,d+1}$ é o tanque que fica para amanhã: a demanda da região é tirada
+do tanque das plantas dela, na proporção do que cada uma guarda.
 
-## Remessa
+6. O dia passa para o seguinte o déficit $U_d = \sum_r u^{\text{exe}}_{r,d}$,
+   o rendimento $\bar R_{d+1}$, a dívida $Q_{i,d}$ de cada planta e o
+   degrau da rampa.
 
-O prazo de cada comboio é o tempo de caminhão da estrada. A conta é o
-teto de quilômetros / 60 / 24, com mínimo de 1 dia. Não há remessa no
-mesmo dia. A volta usa o mesmo prazo. Se a origem tenta outra planta, o
-prazo passa a ser o daquele par. Os quilômetros estão em
-`Refineries.Distances`.
+## Comboios
 
-A remessa cobre a falta de uma planta contra o próprio plano. A falta é
-$P_{i,d} R^{\text{plano}} - x_{i,d}$, quando é maior que zero. A sobra de
-quem realizou mais que o plano, também maior que zero, vai primeiro para
-a maior falta. Se essa sobra cobre a falta, o restante vai para a próxima
-falta. Cada comboio leva no máximo 30 m³ e só sai com pelo menos 20 m³.
-Uma sobra de 50 m³ vira dois comboios, de 30 m³ e de 20 m³. O que sobra
-abaixo de 20 m³ fica na origem. A origem abre um processo para cada
-comboio. A carga fica nesse processo,
-não na planta. No dia da chegada o destino cobra o processo e o volume
-entra na demanda, como $A_d$. Quem cumpriu o plano não recebe. Se ninguém
-ficou abaixo, não há remessa. Se ninguém ficou acima, não há quem envie.
-O Runner não guarda a rota. Carga que cairia depois de 31/12 não volta
-nesse ano. Se ninguém recebe, a sobra fica na origem.
+O pedido e a oferta de cada região usam o tanque depois do passo 3:
 
-Um cenário pode fechar uma estrada num dia. A opção é `closed_roads`,
-uma função que devolve os pares fechados naquele dia. O par vale nos dois
-sentidos. Comboio que usaria essa estrada não sai e a origem tenta a
-próxima planta com falta. Pular a estrada fechada não conta como perda.
-O painel não escolhe esses pares. O cenário de rotas bloqueadas fecha
-três pares por dois meses civis. Nos outros dias a função devolve lista
-vazia.
+$$
+N_{r,d} = D_{r,d} - X_{r,d} \quad \text{se } X_{r,d} < D_{r,d}
+$$
 
-Cada entrega passa por um sorteio no momento em que vai sair. A taxa da
-rota vem primeiro. A rota é o par sem direção. A chave pode ser a tupla
-ordenada, como `{"RECAP", "REPLAN"}`, ou o texto `RECAP|REPLAN`, com os
-identificadores em ordem. Se essa chave não está no mapa, vale a
-porcentagem da refinaria de destino, que é o que o painel envia. Chave
-ausente vale 0. O valor fica entre 0 e 100. 0 não muda a
-remessa. 100 faz a entrega falhar. O sorteio de cada entrega é
-independente. Se falha, o processo não fica a caminho como se fosse
-chegar. A carga é perdida: origem e destino recebem o aviso, o volume
-não volta para a origem e não entra na demanda. Três perdas seguidas
-na rota da origem até aquele destino fazem a origem esperar 10 dias
-antes de iniciar outra entrega nessa rota. Uma entrega que sai zera
-essa contagem. Na pausa, a origem tenta a próxima planta com falta. Pular
-a rota pausada não conta como perda. Se ninguém recebe, a sobra fica na
-origem e isso também não conta como perda. Quem não configura a
-porcentagem no painel usa 1. Na bateria, a referência sorteia de 1 a 5
-em cada rota e a falha alta sorteia de 41 a 100. Os outros cenários usam 1.
+$$
+V_{r,d} = S_{r,d} + X_{r,d} - D_{r,d} \quad \text{se } X_{r,d} \ge D_{r,d} \text{ e o resultado é positivo}
+$$
 
-Se o processo da entrega cai por outro motivo, ele deixa de responder.
-A origem e o destino recebem o aviso. A carga é perdida do mesmo jeito.
+$N_{r,d}$ é o pedido: a demanda que a refinação da região não cobre. O
+pedido não conta o tanque nem as chegadas de hoje, porque esses já cobrem
+o dia de hoje. A carga cobre o dia em que chegar. Assim cada dia envia a
+falta de um dia, e a estrada mantém um fluxo contínuo. $V_{r,d}$ é a
+oferta: o que a região tem acima da própria demanda. A gasolina que
+chegou hoje não sai de novo.
 
-O estoque de uma planta, no fim do dia, é a gasolina produzida até ali
-menos o volume que saiu em entrega já iniciada. O saldo passa para o dia
-seguinte. Quem nunca enviou fica com estoque igual à produção. Carga que
-ninguém recebeu continua na planta. Carga perdida não volta para o estoque.
-A soma desses estoques não reproduz o antigo estoque nacional. Gasolina
-em trânsito não entra nessa soma. O CSV da simulação grava `stock_m3`
-por refinaria e dia, e `plant_stock_m3` no fim do período.
+O pedido é dividido entre as plantas da região pela placa $K^P$. A oferta
+é dividida pelo tanque de cada planta. A maior oferta atende o maior
+pedido, e assim por diante. Cada comboio leva até 30 m³. O resto vira um
+comboio a mais se tiver pelo menos 20 m³. Um volume entre 20 e 30 m³ sai
+num comboio só, e um volume abaixo de 20 m³ não sai. Exemplo: 50 m³
+saem em dois comboios, de 30 e de 20 m³.
 
-Se o processo não responde, a refinaria conta como ausente naquele dia.
-Carga que estava só nesse processo some com ele.
+O prazo de viagem é
+
+$$
+\tau = \max\!\left(\left\lceil \frac{k}{60 \times 24} \right\rceil,\ 1\right) \text{ dias}
+$$
+
+$k$ é a distância de rodovia do par em km, 60 é a velocidade do
+caminhão em km/h e 24 converte horas em dias. O teto $\lceil\cdot\rceil$
+arredonda para cima. As distâncias estão em `docs/refinery_distances.md`.
+
+Na saída, cada comboio passa por um sorteio de falha com probabilidade
+$\varphi/100$. $\varphi$ é um inteiro de 0 a 100. Vale primeiro a taxa
+da rota, que é o par de refinarias sem direção. Sem ela, vale a taxa da
+refinaria de destino, que é o que o painel envia. Sem nenhuma das duas,
+$\varphi = 1$. A carga que falha se perde: não volta para a origem, não
+chega ao destino e entra nas perdas no transporte. Origem e destino são
+avisados.
+
+Três perdas seguidas na mesma rota, da origem até aquele destino, fazem
+a origem esperar 10 dias antes de mandar outra carga por ela. Uma carga
+que sai sem falha zera a contagem. Um cenário também pode fechar
+estradas em certos dias, nos dois sentidos. Em rota pausada ou estrada
+fechada, a origem tenta a próxima planta com pedido. Se ninguém pode
+receber, o volume fica na origem. Nada disso conta como perda. Cargas
+ainda na estrada em 31 de dezembro saem da conta.
 
 ## FUT
 
-$P_{i,d}$ é o petróleo que o plano mandou processar. A torre ainda carrega
-$O_{i,d}$. A gasolina que sai é $P_{i,d} R_{i,d}$.
-
 $$
-\text{FUT}_{\text{Total}, d} = 100 \times \frac{\sum_i (P_{i,d}+O_{i,d})}{\sum_i K^P_{i,d}}
-$$
-
-$$
-\text{FUT}_{\text{Total}, \text{mês}} = 100 \times \frac{\sum_{d \in \text{mês}} \sum_i (P_{i,d}+O_{i,d})}{\sum_{d \in \text{mês}} \sum_i K^P_{i,d}}
+\text{FUT}_{i,d} = 100 \times \frac{P_{i,d} + O_{i,d}}{K^P_{i,d}}
+\qquad
+\text{FUT}_{\text{período}} = 100 \times \frac{\sum_{d} \sum_{i} \left(P_{i,d} + O_{i,d}\right)}{\sum_{d} \sum_{i} K^P_{i,d}}
 $$
 
-$$
-\text{FUT}_{\text{Total}, \text{ano}} = 100 \times \frac{\sum_d \sum_i (P_{i,d}+O_{i,d})}{\sum_d \sum_i K^P_{i,d}}
-$$
+O FUT de uma planta fica entre $\rho^{\min}_{i,d}$ e 100%. O FUT do dia,
+do mês e do ano é a razão das somas do período, nunca a média dos FUT
+individuais. O Histórico usa a mesma razão, com a carga observada:
+petróleo nacional, que inclui o condensado C5+ (hidrocarbonetos com cinco
+carbonos ou mais), petróleo importado e outras cargas, sempre nas 12
+refinarias. Esse é o FUT da Petrobras. O FUE (fator de utilização
+efetivo) publicado pela ANP é outro indicador.
 
-O Histórico usa a mesma razão de somas. O numerador é toda a carga de
-destilação, no sentido do FUT da Petrobras: petróleo nacional (inclui
-C5+), petróleo importado e outras cargas. Sempre sobre as 12 refinarias.
-O FUE publicado pela ANP é outro indicador. FUT individual é diagnóstico.
-Planta ligada fica em $[0{,}40,\ \rho_{i,d}]$. Definição e fontes:
-`docs/other_charges.md`.
+## Indicadores do painel
 
-## Controles
+| Indicador | Conta |
+|---|---|
+| Produção fornecida | $\sum_d \sum_i x_{i,d}$ |
+| Demanda-alvo | $\sum_d D_d$ |
+| Saldo assinado | Produção fornecida menos demanda-alvo |
+| Perdas no transporte | $\Lambda$, a soma das cargas perdidas no ano |
+| Demanda atendida | $\min\!\left(\sum_d D_d,\ \sum_d \sum_i x_{i,d} - \Lambda\right)$ |
+| Déficit | Demanda-alvo menos demanda atendida |
+| Excedente | $\max\!\left(\sum_d \sum_i x_{i,d} - \Lambda - \sum_d D_d,\ 0\right)$ |
+| Cobertura anual | Demanda atendida dividida pela demanda-alvo |
+| Chegadas | $\sum_d A_d$ |
+| Estoque nas plantas | Tanque de todas as plantas no fim de 31 de dezembro |
 
-$D_d = D_d^{\text{base}} (1 + a/100)$. O prazo da remessa é o tempo de
-caminhão de cada par, o teto de (rodovia / 60 / 24), com mínimo $1$. A
-conta que gerou esses quilômetros está em `docs/refinery_distances.md`.
+O ano pergunta se a gasolina refinada cobriu a demanda do ano, não se
+ela estava na região certa em cada dia. A tabela por região mostra, no
+ano: a demanda $\sum_d D_{r,d}$, a produção $\sum_d X_{r,d}$, a demanda
+atendida $\min\!\left(\sum_d D_{r,d},\ \sum_d (X_{r,d} + A_{r,d} - B_{r,d})\right)$,
+o tanque no fim do ano e a cobertura, que é atendida sobre demanda. A
+tabela mensal soma os dias: produção, demanda, saldo e FUT.
+
+O CSV de cada execução grava o fechamento diário: `day_deficit_m3` é
+$U_d$ e `day_excess_m3` é $\sum_r E^{\text{exe}}_{r,d}$. CSV é um arquivo
+de texto com valores separados por vírgula.

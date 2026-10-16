@@ -1,4 +1,5 @@
 defmodule GasolineSimulator.Scenarios.Runner do
+  alias GasolineSimulator.Data.Regions
   alias GasolineSimulator.Data.Repository
   alias GasolineSimulator.Data.Catalog
   alias GasolineSimulator.Models.Overrides
@@ -36,12 +37,12 @@ defmodule GasolineSimulator.Scenarios.Runner do
       closed_roads: Keyword.get(opts, :closed_roads, fn _day -> [] end)
     }
 
-    with {:ok, days} <- run_days(ctx) do
+    with {:ok, days, lost_m3} <- run_days(ctx) do
       {:ok,
        %{
          days: days,
          months: months_from_days(days),
-         annual: summarize(days),
+         annual: year_coverage(summarize(days), lost_m3),
          simulated_yields: ctx.simulated_yields
        }}
     end
@@ -66,15 +67,35 @@ defmodule GasolineSimulator.Scenarios.Runner do
     days
     |> Enum.with_index(1)
     |> Enum.reduce_while(empty_year(ctx), fn {day, index}, state ->
-      {present, landed} = Logistics.landed(ctx.alive_ids.(day), day, ctx.run_id)
+      {present, landed, landed_by_region, landed_by_plant} =
+        Logistics.landed(ctx.alive_ids.(day), day, ctx.run_id)
+
       alive = MapSet.new(present)
+      opening_by_id = opening_stock(ctx.run_id)
       open_plants(alive, ctx)
       rejoin_plants(state.prior, alive)
 
-      result =
+      {result, carried_deficit} =
         day
-        |> solve_day(landed, ctx, alive, state.planning_yield)
-        |> maybe_dispatch(day, present, ctx)
+        |> solve_day(
+          landed,
+          landed_by_region,
+          ctx,
+          alive,
+          state.planning_yield,
+          state.carried_deficit,
+          by_region(opening_by_id),
+          state.plant_catch_up
+        )
+        |> maybe_dispatch(
+          day,
+          present,
+          ctx,
+          state.carried_deficit,
+          landed_by_region,
+          opening_by_id,
+          landed_by_plant
+        )
 
       if result.status == :ok do
         ctx.on_day.(result)
@@ -84,26 +105,58 @@ defmodule GasolineSimulator.Scenarios.Runner do
          state
          |> observe_yield(result)
          |> Map.put(:acc, [result | state.acc])
-         |> Map.put(:prior, alive)}
+         |> Map.put(:prior, alive)
+         |> Map.put(:carried_deficit, carried_deficit)
+         |> Map.put(:plant_catch_up, plant_reaction(state.plant_catch_up, result))}
       else
         {:halt, {:error, result}}
       end
     end)
     |> case do
       {:error, failed} -> {:error, failed}
-      %{acc: acc} -> {:ok, Enum.reverse(acc)}
+      %{acc: acc} -> {:ok, Enum.reverse(acc), transport_losses(ctx.run_id)}
     end
   end
 
-  defp maybe_dispatch(%{status: :ok} = result, day, present, ctx) do
+  defp maybe_dispatch(
+         %{status: :ok} = result,
+         day,
+         present,
+         ctx,
+         _carried_deficit,
+         landed_by_region,
+         opening_by_id,
+         landed_by_plant
+       ) do
     credit_gasoline(result.refineries, ctx.run_id)
+    credit_landed(landed_by_plant, ctx.run_id)
 
-    result
-    |> Logistics.dispatch(day, present, ctx.run_id, ctx.failure_pct, closed_pairs(ctx, day))
-    |> plant_stocks(ctx.run_id)
+    {result, {_shipped, shipped_by_region}} =
+      Logistics.dispatch(
+        result,
+        day,
+        present,
+        ctx.run_id,
+        ctx.failure_pct,
+        closed_pairs(ctx, day),
+        landed_by_plant
+      )
+
+    opening_by_region = by_region(opening_by_id)
+
+    result =
+      result
+      |> Result.cover_regions(shipped_by_region, landed_by_region, opening_by_region)
+      |> tap(&hear_plants(&1, ctx.run_id))
+
+    retain_excess(ctx.run_id, result.demand_m3)
+    result = plant_stocks(result, ctx.run_id)
+    {result, result.deficit_m3}
   end
 
-  defp maybe_dispatch(result, _day, _present, _ctx), do: result
+  defp maybe_dispatch(result, _day, _present, _ctx, carried_deficit, _landed_by_region, _opening_by_id, _landed_by_plant) do
+    {result, carried_deficit}
+  end
 
   defp closed_pairs(ctx, day) do
     ctx.closed_roads.(day)
@@ -114,6 +167,37 @@ defmodule GasolineSimulator.Scenarios.Runner do
   defp credit_gasoline(refineries, run_id) do
     Enum.each(refineries, fn refinery ->
       Plant.credit(refinery.id, refinery.allocated_m3, run_id)
+    end)
+  end
+
+  defp credit_landed(landed_by_plant, run_id) do
+    Enum.each(landed_by_plant, fn {id, volume} -> Plant.credit(id, volume, run_id) end)
+  end
+
+  defp opening_stock(run_id) do
+    Map.new(Catalog.ids(), &{&1, plant_stock(&1, run_id)})
+  end
+
+  defp by_region(stock_by_id) do
+    Enum.reduce(stock_by_id, %{}, fn {id, volume}, acc ->
+      Map.update(acc, Regions.of_plant(id), volume, &(&1 + volume))
+    end)
+  end
+
+  defp retain_excess(run_id, demand_m3) do
+    Enum.each(Regions.ids(), fn region ->
+      held =
+        Catalog.ids()
+        |> Enum.filter(&(Regions.of_plant(&1) == region))
+        |> Enum.map(&{&1, plant_stock(&1, run_id)})
+        |> Enum.filter(fn {_id, volume} -> volume > 0.0 end)
+
+      total = Enum.sum_by(held, &elem(&1, 1))
+      draw = min(total, Regions.demand(demand_m3, region))
+
+      if total > 0.0 and draw > 0.0 do
+        Enum.each(held, fn {id, volume} -> Plant.draw(id, draw * volume / total, run_id) end)
+      end
     end)
   end
 
@@ -136,7 +220,15 @@ defmodule GasolineSimulator.Scenarios.Runner do
   end
 
   defp empty_year(_ctx) do
-    %{acc: [], prior: :start, planning_yield: nil, gasoline_m3: 0.0, petroleum_m3: 0.0}
+    %{
+      acc: [],
+      prior: :start,
+      planning_yield: nil,
+      gasoline_m3: 0.0,
+      petroleum_m3: 0.0,
+      carried_deficit: 0.0,
+      plant_catch_up: %{}
+    }
   end
 
   defp observe_yield(state, result) do
@@ -172,13 +264,11 @@ defmodule GasolineSimulator.Scenarios.Runner do
     :ok
   end
 
-  defp solve_day(day, landed, ctx, alive, planning_yield) do
-    result = chosen_day(day, landed, ctx, alive, planning_yield)
-    hear_plants(result, ctx.run_id)
-    result
+  defp solve_day(day, landed, landed_by_region, ctx, alive, planning_yield, carried_deficit, stock_by_region, plant_catch_up) do
+    chosen_day(day, landed, landed_by_region, ctx, alive, planning_yield, carried_deficit, stock_by_region, plant_catch_up)
   end
 
-  defp chosen_day(day, landed, ctx, alive, planning_yield) do
+  defp chosen_day(day, landed, landed_by_region, ctx, alive, planning_yield, carried_deficit, stock_by_region, plant_catch_up) do
     day_yields = Map.fetch!(ctx.simulated_yields, day)
     demand = Map.fetch!(ctx.year_data.demand_by_day, day).demand_m3
 
@@ -189,7 +279,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
       |> Enum.map(fn refinery ->
         refinery
         |> Map.put(:simulated_yield, Map.fetch!(day_yields, refinery.id))
-        |> Map.put(:min_utilization_ratio, Plant.floor_ratio(refinery.id))
+        |> Map.put(:min_utilization_ratio, catch_up_ratio(refinery, planning_yield, ctx, plant_catch_up))
         |> Map.put(:max_utilization_ratio, ctx.burst)
       end)
 
@@ -198,11 +288,37 @@ defmodule GasolineSimulator.Scenarios.Runner do
         month: Repository.day_key(day),
         demand_m3: adjusted_demand(ctx.overrides, day, demand),
         landed_m3: landed,
+        landed_by_region: landed_by_region,
+        carried_deficit_m3: carried_deficit,
+        stock_by_region: stock_by_region,
         planning_yield: planning_yield,
         refineries: refineries
       })
 
     Result.from_solver(problem, Solver.solve(Problem.to_solver_input(problem), ctx.solver_opts))
+  end
+
+  defp catch_up_ratio(refinery, planning_yield, ctx, plant_catch_up) do
+    base = Plant.floor_ratio(refinery.id)
+    owed = Map.get(plant_catch_up, refinery.id, 0.0)
+    capacity = refinery.processing_capacity_m3
+    yield = planning_yield || Map.get(refinery, :national_average_yield) || 1.0
+
+    extra =
+      if capacity > 0.0 and yield > 0.0 and owed > 0.0 do
+        owed / yield / capacity
+      else
+        0.0
+      end
+
+    min(ctx.burst, base + extra)
+  end
+
+  defp plant_reaction(catch_up, %{refineries: refineries}) do
+    Map.new(refineries, fn refinery ->
+      owed = Map.get(catch_up, refinery.id, 0.0)
+      {refinery.id, max(0.0, owed + refinery.planned_m3 - refinery.allocated_m3)}
+    end)
   end
 
   defp hear_plants(%{status: :ok} = result, run_id) do
@@ -214,8 +330,6 @@ defmodule GasolineSimulator.Scenarios.Runner do
       })
     end)
   end
-
-  defp hear_plants(_result, _run_id), do: []
 
   defp param_failure_pct(params) when is_map(params) do
     Map.get(params, :failure_pct) || Map.get(params, "failure_pct") || %{}
@@ -307,12 +421,65 @@ defmodule GasolineSimulator.Scenarios.Runner do
       landed_m3: sum(periods, :landed_m3),
       excess_m3: sum(periods, :excess_m3),
       plant_stock_m3: plant_stock_total(List.last(periods)),
-      coverage: served_demand_m3 / demand_m3
+      coverage: served_demand_m3 / demand_m3,
+      regions: regional_totals(periods)
     }
+  end
+
+  defp regional_totals(periods) do
+    stock_by_region = periods |> List.last() |> stock_by_region()
+
+    Enum.map(Regions.ids(), fn id ->
+      rows =
+        periods
+        |> Enum.flat_map(&Map.get(&1, :regions, []))
+        |> Enum.filter(&(&1.id == id))
+
+      demand_m3 = Enum.sum_by(rows, & &1.demand_m3)
+      produced_m3 = Enum.sum_by(rows, &Map.get(&1, :produced_m3, 0.0))
+      supply_m3 = Enum.sum_by(rows, & &1.supply_m3)
+      served_m3 = min(demand_m3, supply_m3)
+
+      %{
+        id: id,
+        demand_m3: demand_m3,
+        produced_m3: produced_m3,
+        served_m3: served_m3,
+        stock_m3: Map.get(stock_by_region, id, 0.0),
+        coverage: if(demand_m3 == 0.0, do: 0.0, else: served_m3 / demand_m3)
+      }
+    end)
+  end
+
+  defp stock_by_region(%{stock_by_id: stocks}) when is_map(stocks), do: by_region(stocks)
+  defp stock_by_region(_period), do: %{}
+
+  defp year_coverage(annual, lost_m3) do
+    available = annual.production_m3 - lost_m3
+    served = min(annual.demand_m3, available)
+    deficit = max(annual.demand_m3 - available, 0.0)
+    excess = max(available - annual.demand_m3, 0.0)
+
+    Map.merge(annual, %{
+      lost_m3: lost_m3,
+      served_demand_m3: served,
+      deficit_m3: deficit,
+      excess_m3: excess,
+      coverage: if(annual.demand_m3 == 0.0, do: 0.0, else: served / annual.demand_m3)
+    })
   end
 
   defp sum(periods, field), do: Enum.sum_by(periods, &Map.fetch!(&1, field))
 
   defp plant_stock_total(%{stock_by_id: stocks}) when is_map(stocks), do: Enum.sum(Map.values(stocks))
   defp plant_stock_total(_period), do: 0.0
+
+  defp transport_losses(run_id) do
+    Enum.sum_by(Catalog.ids(), fn id ->
+      case Plant.lost_m3(id, run_id) do
+        {:ok, volume} -> volume
+        {:error, :absent} -> 0.0
+      end
+    end)
+  end
 end

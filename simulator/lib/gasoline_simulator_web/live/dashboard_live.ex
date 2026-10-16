@@ -7,6 +7,8 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   alias GasolineSimulator.Scenarios.Orchestrator
   alias GasolineSimulator.Scenarios.Study
 
+  @visible_delivery_groups 5
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -24,6 +26,7 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         planned_run: nil,
         plants: Orchestrator.plant_statuses(),
         deliveries: Orchestrator.deliveries(),
+        deliveries_expanded: false,
         study: Study.status()
       )
 
@@ -59,6 +62,10 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   def handle_event("reconnect_plant", %{"id" => id}, socket) do
     Orchestrator.reconnect_plant(id)
     {:noreply, socket}
+  end
+
+  def handle_event("toggle_deliveries", _params, socket) do
+    {:noreply, assign(socket, deliveries_expanded: not socket.assigns.deliveries_expanded)}
   end
 
   def handle_event("run_study", _params, socket) do
@@ -105,6 +112,11 @@ defmodule GasolineSimulatorWeb.DashboardLive do
 
   defp pct(value), do: fmt(value * 100.0)
   defp fut_pct(value), do: fmt(value)
+
+  defp region_name(:north), do: "Norte"
+  defp region_name(:northeast), do: "Nordeste"
+  defp region_name(:southeast), do: "Sudeste"
+  defp region_name(:south), do: "Sul"
 
   defp operating_pct(%{up: false}), do: "0.0%"
   defp operating_pct(%{fut_pct: nil}), do: "n/d"
@@ -153,18 +165,17 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         <div class="max-w-4xl space-y-2">
           <h1 class="text-3xl font-bold tracking-tight">Painel de alocação de gasolina A</h1>
           <p class="text-base leading-6 opacity-70">
-            O Histórico 2025 mostra o registro curado pré-computado. O Planejado 2025
-            sorteia o rendimento de gasolina A entre os meses válidos daquela
-            refinaria em 2025. Se o valor seria 0, usa a média nacional. Em seguida
-            executa uma simulação de produção e déficit de janeiro a dezembro. O
-            escopo tem 12 refinarias. LUBNOR fica de fora: não produz gasolina A.
-            Não há estoque nacional. Planta que produziu acima do plano envia
-            a sobra para a que ficou abaixo, em comboios de no máximo 30 m³,
-            com pelo menos 20 m³. Derrubar uma planta tira o processo OTP dela. O Planejado
-            realoca a demanda nas que restam até Recuperar. Processo que não
-            responde conta como planta ausente. O volume só entra na demanda
-            no dia em que chega. O prazo mínimo
-            é 1 dia. O ano leva pelo menos 30 s.
+            O Histórico 2025 mostra o ano observado, já curado. O Planejado 2025
+            simula os 365 dias: um plano central decide o petróleo de cada
+            refinaria, o rendimento sorteado transforma esse petróleo em gasolina
+            A e comboios de caminhão levam a sobra das regiões que refinam mais
+            para as que refinam menos. Cada comboio leva até 30 m³, só sai com
+            pelo menos 20 m³ e só cobre a demanda no dia em que chega. São 12
+            refinarias. A LUBNOR fica de fora porque não produz gasolina A.
+            Derrubar uma planta tira o processo dela do ar, e o plano
+            redistribui a demanda até ela ser recuperada. FUT é o fator de
+            utilização total: a fração da capacidade ocupada pela destilação.
+            O ano leva pelo menos 30 s.
           </p>
         </div>
 
@@ -174,7 +185,7 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         </div>
 
         <.plants_panel plants={@plants} />
-        <.deliveries_panel deliveries={@deliveries} />
+        <.deliveries_panel deliveries={@deliveries} expanded={@deliveries_expanded} />
 
         <form phx-submit="run_plan" id="dashboard-planning-form" class="rounded border p-4 space-y-4">
           <h2 class="font-semibold">Controles do Planejado 2025</h2>
@@ -263,11 +274,12 @@ defmodule GasolineSimulatorWeb.DashboardLive do
     <div id="dashboard-plants" class="rounded border p-4 space-y-3">
       <h2 class="font-semibold">Refinarias no ar</h2>
       <p class="text-sm opacity-70">
-        Cada item é um GenServer. Ausente não entra no MILP do dia. Ao
-        recuperar, a planta sobe 1 p.p. por dia a partir de 40%. Não
-        volta a 100% no mesmo dia. O FUT e a gasolina A acumulada
-        atualizam a cada dia do Planejado. Estoque é a gasolina produzida
-        menos o que saiu em entrega. A soma não inclui o que está em trânsito.
+        Cada item é o processo de uma refinaria. Planta ausente não entra
+        no plano do dia. Ao recuperar, o piso dela começa em 40% e sobe 1
+        ponto percentual por dia sem déficit no país, até 94%. O FUT, a
+        gasolina A acumulada e o estoque atualizam a cada dia do Planejado.
+        O estoque é o tanque da planta no fim do dia e não inclui o que
+        está na estrada.
       </p>
       <p id="dashboard-plant-stock-sum" class="text-sm font-mono tabular-nums">
         Soma nas plantas {fmt(plant_stock_sum(@plants), 1, 0)} m³
@@ -320,33 +332,98 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   end
 
   attr :deliveries, :list, required: true
+  attr :expanded, :boolean, required: true
 
   defp deliveries_panel(assigns) do
+    groups = delivery_groups(assigns.deliveries)
+
+    visible_groups =
+      if assigns.expanded, do: groups, else: Enum.take(groups, @visible_delivery_groups)
+
+    assigns =
+      assign(assigns,
+        visible_groups: visible_groups,
+        more_groups?: length(groups) > @visible_delivery_groups,
+        summary: delivery_summary(groups, length(assigns.deliveries))
+      )
+
     ~H"""
     <div id="dashboard-deliveries" class="rounded border p-4 space-y-3">
       <h2 class="font-semibold">Entregas a caminho</h2>
       <p class="text-sm opacity-70">
         Cada entrega é um processo a caminho. A falha logística acontece na
         saída, pela porcentagem do destino. A carga perdida não aparece aqui.
-        Origem e destino são avisados e o volume some.
+        Origem e destino são avisados e o volume some. Comboios da mesma
+        origem e destino ficam no mesmo card.
       </p>
       <p :if={@deliveries == []} class="text-sm opacity-60">Nenhuma entrega a caminho.</p>
-      <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        <div
-          :for={delivery <- @deliveries}
-          id={"dashboard-delivery-#{delivery.id}"}
-          class="rounded border px-3 py-3"
-        >
-          <div class="min-w-0 space-y-1">
-            <p class="font-medium">{delivery.origin_id} → {delivery.destination_id}</p>
-            <p class="text-xs opacity-60">Chega em {delivery.arrival}</p>
-            <p class="text-sm font-mono tabular-nums">{fmt(delivery.volume_m3, 1, 1)} m³</p>
+      <div :if={@deliveries != []} class="space-y-3">
+        <p id="dashboard-deliveries-summary" class="text-sm opacity-60">{@summary}</p>
+        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            :for={group <- @visible_groups}
+            id={"dashboard-delivery-#{group.origin_id}-#{group.destination_id}"}
+            class="rounded border px-3 py-3"
+          >
+            <div class="min-w-0 space-y-1">
+              <p class="font-medium">{group.origin_id} → {group.destination_id}</p>
+              <p class="text-xs opacity-60">
+                {convoy_label(group.count)} · {arrival_label(group)}
+              </p>
+              <p class="text-sm font-mono tabular-nums">{fmt(group.volume_m3, 1, 1)} m³</p>
+            </div>
           </div>
         </div>
+        <button
+          :if={@more_groups?}
+          type="button"
+          id="dashboard-deliveries-toggle"
+          phx-click="toggle_deliveries"
+          class="btn btn-sm"
+        >
+          {deliveries_toggle_label(@expanded)}
+        </button>
       </div>
     </div>
     """
   end
+
+  defp delivery_groups(deliveries) do
+    deliveries
+    |> Enum.group_by(&{&1.origin_id, &1.destination_id})
+    |> Enum.map(fn {{origin_id, destination_id}, items} ->
+      arrivals = Enum.sort(Enum.map(items, & &1.arrival), Date)
+
+      %{
+        origin_id: origin_id,
+        destination_id: destination_id,
+        count: length(items),
+        volume_m3: Enum.sum_by(items, & &1.volume_m3),
+        first_arrival: List.first(arrivals),
+        last_arrival: List.last(arrivals)
+      }
+    end)
+    |> Enum.sort_by(&{&1.first_arrival, &1.origin_id, &1.destination_id})
+  end
+
+  defp delivery_summary(groups, convoys) do
+    "#{route_label(length(groups))}, #{convoy_label(convoys)}"
+  end
+
+  defp route_label(1), do: "1 rota"
+  defp route_label(count), do: "#{count} rotas"
+
+  defp convoy_label(1), do: "1 comboio"
+  defp convoy_label(count), do: "#{count} comboios"
+
+  defp arrival_label(%{first_arrival: day, last_arrival: day}), do: "Chega em #{day}"
+
+  defp arrival_label(%{first_arrival: first, last_arrival: last}) do
+    "Chega de #{first} a #{last}"
+  end
+
+  defp deliveries_toggle_label(true), do: "Ver menos"
+  defp deliveries_toggle_label(false), do: "Ver mais"
 
   attr :historical, :map, required: true
 
@@ -460,12 +537,12 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         <span :if={@planned_run} class="badge">{plan_status(@planned_run.status)}</span>
       </div>
       <p class="border-b border-base-300 px-6 py-3 text-sm opacity-70">
-        O solver decide cada dia de 2025. Cada refinaria pode ir a 100% de
-        FUT. Depois do pico o teto só desce até a trava de 94% e fica o
-        tempo do excesso acima de 94%. O painel agrega esses dias em mês
-        e ano. Cada
-        execução sorteia o rendimento diário entre os meses válidos daquela
-        refinaria em 2025. Valor 0 sobe para a média nacional.
+        O plano decide cada dia de 2025. Cada refinaria fica entre o piso
+        de 94% e o teto de 100% de FUT. Se rendeu menos do que o plano, o
+        piso dela sobe no dia seguinte. O rendimento diário é sorteado entre
+        os meses válidos de cada refinaria em 2025, e um sorteio 0 vira a
+        média nacional. O ano compara a gasolina refinada, menos as perdas
+        no transporte, com a demanda do ano.
       </p>
       <p :if={is_nil(@planned_run)} class="px-6 py-8 text-sm opacity-60">Ainda não executado.</p>
       <div
@@ -505,9 +582,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
           <.metric
             label="Demanda atendida"
             value={annual_volume(@annual.served_demand_m3)}
-            unit="Mm³"
+            unit="Mm³ no ano"
           />
-          <.metric label="Déficit" value={annual_volume(@annual.deficit_m3)} unit="Mm³" />
+          <.metric label="Déficit" value={annual_volume(@annual.deficit_m3)} unit="Mm³ não cobertos no ano" />
           <.metric
             label="Chegadas"
             value={annual_volume(@annual.landed_m3)}
@@ -516,7 +593,7 @@ defmodule GasolineSimulatorWeb.DashboardLive do
           <.metric
             label="Excedente"
             value={annual_volume(@annual.excess_m3)}
-            unit="Mm³"
+            unit="Mm³ acima da demanda"
           />
           <.metric
             label="Estoque nas plantas"
@@ -524,10 +601,54 @@ defmodule GasolineSimulatorWeb.DashboardLive do
             unit="Mm³ no fim do ano"
           />
           <.metric
+            label="Perdas no transporte"
+            value={annual_volume(@annual.lost_m3)}
+            unit="Mm³"
+          />
+          <.metric
             label="Cobertura anual"
             value={"#{pct(@annual.coverage)}%"}
             unit="demanda atendida"
           />
+        </div>
+        <div class="space-y-3 border-b border-base-300 px-6 py-5">
+          <h3 class="text-sm font-semibold uppercase tracking-wide opacity-60">
+            Demanda por região
+          </h3>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[44rem] text-sm">
+              <thead>
+                <tr class="border-b border-base-300 text-left text-xs uppercase tracking-wide opacity-60">
+                  <th class="py-3 pr-4 font-medium">Região</th>
+                  <th class="px-3 py-3 text-right font-medium">Demanda</th>
+                  <th class="px-3 py-3 text-right font-medium">Produção</th>
+                  <th class="px-3 py-3 text-right font-medium">Atendida</th>
+                  <th class="px-3 py-3 text-right font-medium">Estoque</th>
+                  <th class="py-3 pl-3 text-right font-medium">Cobertura</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-base-200">
+                <tr :for={region <- @annual.regions} class="hover:bg-base-200/50">
+                  <td class="py-3 pr-4 font-medium">{region_name(region.id)}</td>
+                  <td class="px-3 py-3 text-right font-mono tabular-nums">
+                    {annual_volume(region.demand_m3)} Mm³
+                  </td>
+                  <td class="px-3 py-3 text-right font-mono tabular-nums">
+                    {annual_volume(region.produced_m3)} Mm³
+                  </td>
+                  <td class="px-3 py-3 text-right font-mono tabular-nums">
+                    {annual_volume(region.served_m3)} Mm³
+                  </td>
+                  <td class="px-3 py-3 text-right font-mono tabular-nums">
+                    {annual_volume(region.stock_m3)} Mm³
+                  </td>
+                  <td class="py-3 pl-3 text-right font-mono tabular-nums">
+                    {pct(region.coverage)}%
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
         <div class="space-y-3 px-6 py-5">
           <h3 class="text-sm font-semibold uppercase tracking-wide opacity-60">

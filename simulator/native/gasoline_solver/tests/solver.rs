@@ -1,4 +1,4 @@
-use gasoline_solver::{solve, FacilityInput, SolverInput};
+use gasoline_solver::{solve, FacilityInput, RegionInput, SolverInput};
 
 const LIMIT: f64 = 5.0;
 const EPS: f64 = 1e-6;
@@ -6,6 +6,7 @@ const EPS: f64 = 1e-6;
 fn facility(id: &str, capacity: f64, floor: f64) -> FacilityInput {
     FacilityInput {
         id: id.into(),
+        region: "all".into(),
         capacity,
         floor,
     }
@@ -15,6 +16,11 @@ fn input(demand: f64, landed: f64, facilities: Vec<FacilityInput>) -> SolverInpu
     SolverInput {
         demand,
         landed,
+        regions: vec![RegionInput {
+            id: "all".into(),
+            demand,
+            landed,
+        }],
         facilities,
     }
 }

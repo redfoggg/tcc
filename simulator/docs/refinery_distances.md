@@ -1,12 +1,12 @@
 # Distâncias entre refinarias
 
-Este arquivo registra a distância de cada par e o tempo de um caminhão a 60 km/h. A volta usa os mesmos números. Ele é documentação. A simulação não lê este arquivo. Os quilômetros de rodovia que ela usa estão em `Refineries.Distances`.
+Este arquivo registra a distância de cada par de refinarias e o tempo de um caminhão a 60 km/h. A volta usa os mesmos números. Ele é documentação: a simulação não lê este arquivo. Os quilômetros que ela usa estão em `Refineries.Distances`.
 
-A tabela foi preenchida com a saída do script desta página. A linha reta vem de `great_circle_km`. A rodovia vem de `road_km`. As horas vêm de `truck_hours`. Os dias são essas horas divididas por 24.
+A tabela é a saída do script desta página. A linha reta vem de `great_circle_km`, a rodovia de `road_km` e as horas de `truck_hours`. A coluna de dias é horas divididas por 24. A simulação arredonda esse valor para cima, com mínimo de 1 dia: RPCC → RPBC, 2,06 dias, vira 3 dias, e RNEST → RPCC, 0,34 dia, vira 1 dia.
 
 ## Pontos
 
-A coordenada vem da Wikipédia quando a página publica o ponto da refinaria. REAM, RECAP e RPCC não têm coordenada nessa fonte. Nesses três casos o ponto é o da instalação no OpenStreetMap, obtido pelo Nominatim.
+UF é a unidade da federação. A coordenada vem da Wikipédia quando a página publica o ponto da refinaria. REAM, RECAP e RPCC não têm coordenada nessa fonte. Nesses três casos o ponto é o da instalação no OpenStreetMap, um mapa colaborativo aberto, obtido pelo Nominatim, o serviço de busca de endereços do OpenStreetMap.
 
 | Código | Nome | UF | Latitude | Longitude | Fonte |
 |---|---|---|---:|---:|---|
@@ -27,7 +27,7 @@ A coordenada vem da Wikipédia quando a página publica o ponto da refinaria. RE
 
 A linha reta é a distância de grande círculo entre os dois pontos, com raio da Terra de 6371 km.
 
-A rodovia é a rota de carro do OSRM sobre o OpenStreetMap, a mesma chamada de `road_km`. A consulta sai do código que vem antes no alfabeto e chega no outro. A distância de volta fica igual nesta tabela. A tabela abaixo é o retorno dessa chamada em 11 de outubro de 2026.
+A rodovia é a rota de carro do OSRM (Open Source Routing Machine, um roteador de código aberto) sobre o OpenStreetMap, a mesma chamada de `road_km`. A consulta sai do código que vem antes no alfabeto e chega no outro. A distância de volta fica igual nesta tabela. A tabela abaixo é o retorno dessa chamada em 11 de outubro de 2026.
 
 O tempo é a distância rodoviária dividida por 60. O caminhão segue sem parada de descanso. Os números usam ponto como separador decimal.
 

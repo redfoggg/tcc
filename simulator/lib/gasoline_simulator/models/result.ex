@@ -1,4 +1,5 @@
 defmodule GasolineSimulator.Models.Result do
+  alias GasolineSimulator.Data.Regions
   alias GasolineSimulator.Models.Problem
 
   defstruct [
@@ -17,6 +18,7 @@ defmodule GasolineSimulator.Models.Result do
     :deficit_m3,
     :coverage,
     :reason,
+    regions: [],
     refineries: [],
     stock_by_id: %{}
   ]
@@ -82,6 +84,69 @@ defmodule GasolineSimulator.Models.Result do
       reason: reason,
       demand_m3: problem.demand_m3,
       landed_m3: problem.landed_m3
+    }
+  end
+
+  def cover_regions(result, shipped_by_region, landed_by_region, opening_by_region) do
+    regions =
+      Enum.map(Regions.ids(), fn region ->
+        produced =
+          result.refineries
+          |> Enum.filter(&(Regions.of_plant(&1.id) == region))
+          |> Enum.sum_by(& &1.allocated_m3)
+
+        demand = Regions.demand(result.demand_m3, region)
+        opening = Map.get(opening_by_region, region, 0.0)
+        arrived = Map.get(landed_by_region, region, 0.0)
+        left = Map.get(shipped_by_region, region, 0.0)
+        fresh = produced + arrived - left
+        deficit = max(demand - opening - fresh, 0.0)
+        closing = max(opening + fresh - demand, 0.0)
+
+        %{
+          id: region,
+          demand_m3: demand,
+          produced_m3: produced,
+          supply_m3: fresh,
+          served_m3: demand - deficit,
+          deficit_m3: deficit,
+          excess_m3: max(closing - opening, 0.0)
+        }
+      end)
+
+    deficit_m3 = Enum.sum_by(regions, & &1.deficit_m3)
+    excess_m3 = Enum.sum_by(regions, & &1.excess_m3)
+    opening = opening_by_region |> Map.values() |> Enum.sum()
+    shipped = shipped_by_region |> Map.values() |> Enum.sum()
+    available_m3 = result.production_m3 + opening + result.landed_m3 - shipped
+    served_demand_m3 = result.demand_m3 - deficit_m3
+
+    %{
+      result
+      | balance_m3: available_m3 - result.demand_m3,
+        excess_m3: excess_m3,
+        served_demand_m3: served_demand_m3,
+        deficit_m3: deficit_m3,
+        coverage: coverage(served_demand_m3, result.demand_m3),
+        regions: regions
+    }
+  end
+
+  def withhold_shipments(%__MODULE__{} = result, shipped) when shipped <= 0.0, do: result
+
+  def withhold_shipments(%__MODULE__{} = result, shipped) do
+    available_m3 = result.production_m3 - shipped + result.landed_m3
+    deficit_m3 = max(result.demand_m3 - available_m3, 0.0)
+    excess_m3 = max(available_m3 - result.demand_m3, 0.0)
+    served_demand_m3 = result.demand_m3 - deficit_m3
+
+    %{
+      result
+      | balance_m3: available_m3 - result.demand_m3,
+        excess_m3: excess_m3,
+        served_demand_m3: served_demand_m3,
+        deficit_m3: deficit_m3,
+        coverage: coverage(served_demand_m3, result.demand_m3)
     }
   end
 

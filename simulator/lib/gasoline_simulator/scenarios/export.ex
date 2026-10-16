@@ -22,6 +22,7 @@ defmodule GasolineSimulator.Scenarios.Export do
     :landed_m3,
     :excess_m3,
     :plant_stock_m3,
+    :lost_m3,
     :csv_path,
     :note
   ]
@@ -157,6 +158,7 @@ defmodule GasolineSimulator.Scenarios.Export do
       landed_m3: annual.landed_m3,
       excess_m3: annual.excess_m3,
       plant_stock_m3: annual.plant_stock_m3,
+      lost_m3: annual.lost_m3,
       csv_path: relative,
       note: instance.meta.note
     })
@@ -175,6 +177,7 @@ defmodule GasolineSimulator.Scenarios.Export do
       landed_m3: nil,
       excess_m3: nil,
       plant_stock_m3: nil,
+      lost_m3: nil,
       csv_path: "",
       note: join_note(instance.meta.note, failure_note(reason))
     })

@@ -57,9 +57,17 @@ defmodule GasolineSimulator.Refineries.Plant do
 
   def credit(_id, _volume, _run_id), do: :ok
 
+  def draw(id, volume, run_id) when is_number(volume) and volume > 0.0 do
+    call(id, {:draw, volume, run_id})
+  end
+
+  def draw(_id, _volume, _run_id), do: :ok
+
   def on_hand(id, run_id), do: call(id, {:on_hand, run_id})
 
   def notices(id), do: call(id, :notices)
+
+  def lost_m3(id, run_id), do: call(id, {:lost_m3, run_id})
 
   def fleet(id), do: call(id, :fleet)
 
@@ -104,6 +112,7 @@ defmodule GasolineSimulator.Refineries.Plant do
        expected: %{},
        notices: [],
        routes: %{},
+       lost_m3: %{},
        fleet: nil,
        pace: nil,
        burst: nil,
@@ -121,6 +130,7 @@ defmodule GasolineSimulator.Refineries.Plant do
          expected: Map.delete(state.expected, run_id),
          notices: Enum.reject(state.notices, &(&1.run_id == run_id)),
          routes: Map.delete(state.routes, run_id),
+         lost_m3: Map.delete(state.lost_m3, run_id),
          fleet: clear_fleet(state.fleet, run_id),
          pace: clear_pace(state.pace, run_id),
          burst: nil,
@@ -176,12 +186,21 @@ defmodule GasolineSimulator.Refineries.Plant do
     {:reply, :ok, add_on_hand(state, run_id, volume)}
   end
 
+  def handle_call({:draw, volume, run_id}, _from, state) do
+    held = Map.get(state.on_hand, run_id, 0.0)
+    {:reply, :ok, debit_on_hand(state, run_id, min(volume, held))}
+  end
+
   def handle_call({:on_hand, run_id}, _from, state) do
     {:reply, {:ok, Map.get(state.on_hand, run_id, 0.0)}, state}
   end
 
   def handle_call(:notices, _from, state) do
     {:reply, state.notices, state}
+  end
+
+  def handle_call({:lost_m3, run_id}, _from, state) do
+    {:reply, {:ok, Map.get(state.lost_m3, run_id, 0.0)}, state}
   end
 
   def handle_call({:arrivals, day, run_id}, _from, state) do
@@ -200,17 +219,23 @@ defmodule GasolineSimulator.Refineries.Plant do
   end
 
   def handle_call({:ship, volume, day, peer_ids, run_id, failure_pct, closed_roads}, _from, state) do
-    case deliver(
-           state,
-           volume,
-           day,
-           peers_of(state.id, peer_ids),
-           run_id,
-           failure_pct,
-           closed_roads
-         ) do
-      {:ok, state} -> {:reply, {:ok, volume}, state}
-      :unclaimed -> {:reply, {:error, :absent}, state}
+    volume = min(volume, Map.get(state.on_hand, run_id, 0.0))
+
+    if volume <= 0.0 do
+      {:reply, {:ok, 0.0}, state}
+    else
+      case deliver(
+             state,
+             volume,
+             day,
+             peers_of(state.id, peer_ids),
+             run_id,
+             failure_pct,
+             closed_roads
+           ) do
+        {:ok, state} -> {:reply, {:ok, volume}, state}
+        :unclaimed -> {:reply, {:error, :absent}, state}
+      end
     end
   end
 
@@ -359,7 +384,7 @@ defmodule GasolineSimulator.Refineries.Plant do
 
               if cargo_lost?(failure_pct, state.id, peer) do
                 DeliverySupervisor.fail(id)
-                {:ok, note_loss(state, peer, day, run_id)}
+                {:ok, note_loss(state, peer, day, run_id, volume)}
               else
                 {:ok, note_success(state, peer, run_id)}
               end
@@ -439,7 +464,7 @@ defmodule GasolineSimulator.Refineries.Plant do
     MapSet.member?(closed_roads, Distances.pair(origin, destination))
   end
 
-  defp note_loss(state, destination, day, run_id) do
+  defp note_loss(state, destination, day, run_id, volume) do
     route = route_of(state, run_id, destination)
     losses = route.losses + 1
 
@@ -450,7 +475,9 @@ defmodule GasolineSimulator.Refineries.Plant do
         route.resume_on
       end
 
-    put_route(state, run_id, destination, %{losses: losses, resume_on: resume_on})
+    state
+    |> Map.update!(:lost_m3, &Map.update(&1, run_id, volume, fn acc -> acc + volume end))
+    |> put_route(run_id, destination, %{losses: losses, resume_on: resume_on})
   end
 
   defp note_success(state, destination, run_id) do

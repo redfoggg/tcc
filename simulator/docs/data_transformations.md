@@ -1,98 +1,280 @@
 # Transformações e escopo dos dados
 
-Fórmulas aplicadas sobre as fontes de `docs/data_report.md`.
+Fórmulas aplicadas sobre as fontes de `docs/data_report.md`. O índice
+$t$ é o mês de 2025 e $i$ é a refinaria. Os valores diários do modelo são
+o valor do mês dividido pelos dias do mês.
 
 ## Demanda
 
-A ANP publica gasolina C. O modelo usa equivalente de gasolina A:
+A ANP (Agência Nacional do Petróleo, Gás Natural e Biocombustíveis)
+publica vendas de gasolina C, que é gasolina A misturada com etanol
+anidro. O modelo usa o equivalente em gasolina A:
 
 $$
-D_t^{\text{base}} = \text{vendas\_C}_t \times (1 - e_t)
+D^{\text{base}}_t = V^C_t \, (1 - e_t)
 $$
 
-`e_t = 0,27` até 2025-07 (Resolução CNPE 16/2021). `e_t = 0,30` a partir de
-2025-08 (Resolução CNPE 9/2025). A série ANP não separa comum e premium. A
-fração da comum vale para o total. Proveniência:
-`derived_assumption_not_observed`.
+$V^C_t$ são as vendas nacionais de gasolina C no mês, em m³. $e_t$ é a
+fração obrigatória de etanol anidro na mistura: 0,27 até julho de 2025
+(Resolução 16/2021 do CNPE, o Conselho Nacional de Política Energética)
+e 0,30 a partir de agosto (Resolução CNPE 9/2025). A série da ANP não
+separa gasolina comum e premium, e a fração da comum vale para o total.
+Proveniência: `derived_assumption_not_observed`.
+
+A série é nacional. Vendas por região não foram guardadas. A demanda do
+dia é dividida pela população do Censo Demográfico 2022 do IBGE
+(Instituto Brasileiro de Geografia e Estatística): Norte 17.354.884,
+Nordeste 54.658.515, Sul 29.937.706 e Sudeste 84.840.113. O Centro-Oeste,
+16.289.538, entra no Sudeste porque não tem refinaria no catálogo. As
+fatias estão em `docs/model_specification.md`.
 
 ## Capacidade
 
-Instantâneo nominal de 2025-12-31, em bbl/dia, repetido em todos os meses:
+A ANP publica a capacidade nominal de 31 de dezembro de 2025, em barris
+por dia. O mesmo valor vale para todos os meses:
 
 $$
-K^P_{i,t} = \text{nameplate\_bbl\_day} \times \text{dias\_do\_mês} \times 0{,}158987
+K^P_{i,t} = c_i \times n_t \times 0{,}158987
 $$
 
-$$
-K^G_{i,t} = K^P_{i,t} \times \text{rendimento\_médio\_nacional}
-$$
+$c_i$ é a capacidade nominal da refinaria em barris por dia, $n_t$ é o
+número de dias do mês e 0,158987 é o fator da ANP de barril para m³.
+$K^P_{i,t}$ é a capacidade de processamento do mês, em m³.
 
-`0.158987` é o fator ANP de barril para m³. $K^G$ no CSV é teórico
-(`derived_theoretical_not_observed`): $K^P$ vezes o rendimento médio
-nacional do mês. Essa coluna não entra no Planejado. O teto de gasolina A
-é $\rho R K^P$ de cada refinaria. A coluna de piso observado do CSV
-também não entra.
+O CSV também traz uma capacidade teórica de gasolina A,
+$K^G_{i,t} = K^P_{i,t} \times R^{\text{BR}}_t$, com $R^{\text{BR}}_t$
+definido abaixo, e uma coluna de piso observado. Nenhuma das duas entra
+no Planejado. Lá o teto de petróleo é $K^P$ menos as outras cargas, como
+descrito em `docs/model_specification.md`.
 
-## Rendimento simulado
+## Rendimento
 
-O sorteio de $R_{i,d}$ usa os rendimentos mensais da própria refinaria em
-2025. A produção publicada não é alterada. O denominador é petróleo
-nacional mais importado. Outras cargas não entram nessa razão. Meses sem
-petróleo processado, ou com A/petróleo $> 1$, ficam de fora da lista. O
-dia sorteia um desses valores, com reposição. Sorteio $0$ (ou lista vazia)
-vira a média nacional ANP do ano, a coluna
-`national_avg_gasoline_a_yield_used`, agora gasolina A do parque dividida
-pelo petróleo do parque. Zero histórico é mercado, não restrição de
-processo.
+O rendimento mensal de cada refinaria é
 
 $$
-R_{i,d} \in \{R_{i,\text{mês}}: \text{mês válido de } i\}
+R_{i,t} = \frac{G_{i,t}}{\text{PN}_{i,t} + \text{PI}_{i,t}}
 $$
 
-A demanda e as capacidades diárias são o valor mensal dividido pelos dias
-do mês.
+$G_{i,t}$ é a gasolina A produzida no mês, $\text{PN}_{i,t}$ o petróleo
+nacional e $\text{PI}_{i,t}$ o petróleo importado processados, todos em
+m³. Outras cargas ficam fora do denominador. A produção publicada não é
+alterada. Um mês é válido se houve petróleo processado e se
+$R_{i,t} \le 1$. O dia sorteia, com reposição, um dos meses válidos da
+própria refinaria.
 
-A razão nacional 2025 no escopo das 12 refinarias, gasolina A sobre
-petróleo, é `0,256572`. Sobre a carga atmosférica inteira ela era
-`0,251151`. O CSV de
-rendimentos derivados só documenta a variação histórica mensal por
-produto. Não entra no sorteio.
+$R^{\text{BR}}_t$ é a mesma razão para todas as refinarias do país
+juntas, no mês $t$. Fica na coluna `national_avg_gasoline_a_yield_used`.
+A média simples dos 12 meses, $R^{\text{BR}} = 0{,}2685$, é o rendimento
+de planejamento do primeiro dia e substitui um sorteio igual a 0. As
+hipóteses por trás dessa troca estão em Hipóteses e simplificações. Só nas 12
+refinarias do catálogo, a razão do ano é 0,2566 sobre o petróleo e
+0,2512 sobre a carga total, com outras cargas. O CSV de rendimentos
+derivados só documenta a variação mensal por produto e não entra no
+sorteio.
 
 ## Histórico 2025
 
-`historical_2025_summary.json` traz produção observada, demanda-alvo, saldo
-`produção - demanda`, petróleo e outras cargas. Não reconstrói estoque.
-FUT Total:
+`historical_2025_summary.json` traz, por mês e no ano, a gasolina A
+produzida, a demanda, o saldo (produção menos demanda), o petróleo e as
+outras cargas. Não há estoque. O FUT (fator de utilização total) é
 
 $$
-\text{FUT} = 100 \times \frac{\sum (\text{petróleo}+\text{outras cargas})}{\sum K^P}
+\text{FUT} = 100 \times \frac{\sum_i \left(\text{PN}_{i,t} + \text{PI}_{i,t} + O_{i,t}\right)}{\sum_i K^P_{i,t}}
 $$
 
-mensal e anual, sobre as 12 refinarias. Esse é o FUT da Petrobras:
-toda a carga das unidades de destilação dividida pela capacidade de
-referência. O numerador observado já era a soma das três matérias-primas
-da série da ANP (petróleo nacional, petróleo importado e outras cargas),
-então o percentual do histórico permanece. O FUE que a ANP publica é
-outro indicador. Fontes e o corte: `docs/other_charges.md`.
-REPAR em 2025-02 fica com FUT
-individual 100,2535% (954.411 m³ processados contra 951.998,117 m³ de
-capacidade convertida).
+$O_{i,t}$ são as outras cargas. As somas correm nas 12 refinarias, no
+mês ou no ano. É o FUT da Petrobras: toda a carga da destilação dividida
+pela capacidade de referência. O FUE (fator de utilização efetivo) que a
+ANP publica é outro indicador. Detalhes em `docs/other_charges.md`. A
+REPAR em fevereiro de 2025 fica com FUT individual de 100,2535%: 954.411
+m³ processados contra 951.998,117 m³ de capacidade.
 
 ## Escopo
 
-Catálogo em `lib/gasoline_simulator/data/catalog.ex`: RNEST, REFMAT, RECAP,
-REDUC, REFAP, REGAP, REPAR, RPBC, REPLAN, REVAP, REAM e RPCC.
-Clara Camarão usa `RPCC`, não o rótulo `RECAP` de `estudo_tcc.typ`.
+O catálogo, em `lib/gasoline_simulator/data/catalog.ex`, tem RNEST,
+REFMAT, RECAP, REDUC, REFAP, REGAP, REPAR, RPBC, REPLAN, REVAP, REAM e
+RPCC. A Clara Camarão usa o código `RPCC`, não o rótulo `RECAP` de
+`estudo_tcc.typ`. A LUBNOR, em Fortaleza, produz lubrificantes, parafina
+e asfalto, e não registra gasolina A em 2025. Incluí-la só somaria
+petróleo ao FUT sem gasolina possível. Também ficam fora DAX OIL,
+MANGUINHOS, PARANÁ XISTO, RIOGRANDENSE, SSOIL e UNIVEN.
 
-LUBNOR (Fortaleza) fica de fora do Histórico e do Planejado. É a refinaria
-de lubrificantes e derivados do Nordeste. A ANP não registra gasolina A
-lá em 2025. O parque é de lubrificantes, parafina e asfalto, não de
-gasolina. Incluí-la só somaria petróleo no FUT sem A possível.
+## Hipóteses e simplificações
 
-Fora do modelo: LUBNOR, DAX OIL, MANGUINHOS, PARANÁ XISTO, RIOGRANDENSE,
-SSOIL e UNIVEN.
+Cada item diz o que o modelo assume, onde isso pesa e por quê. Os
+números são do histórico de 2025.
 
-## Limitações
+### 1. Rendimento zero vira a média nacional
 
-- Um único instantâneo de capacidade cobre o ano inteiro
-- $R_{i,d}$ não é rendimento de engenharia por refinaria
+**O quê.** Um mês válido com gasolina A igual a 0 entra no sorteio como
+$R^{\text{BR}} = 0{,}2685$.
+
+**Onde.** RNEST, com 5 dos 11 meses válidos em zero (agosto a dezembro,
+rodando entre 82% e 87% da capacidade), e RPCC, com 8 dos 12 meses em
+zero. Nos meses em que produziram gasolina, a RNEST rendeu de 0,001 a
+0,055 e a RPCC de 0,002 a 0,006.
+
+**Por quê.** A hipótese é que o zero foi decisão de mercado, a escolha de
+outro produto, e não incapacidade da planta. O modelo pergunta o que
+aconteceria se elas produzissem gasolina como o parque nacional.
+
+**Efeito.** O rendimento esperado no sorteio fica em 0,131 na RNEST e em
+0,180 na RPCC, bem acima de qualquer mês observado delas. Com o piso de
+94%, o modelo tira cerca de 0,78 milhão de m³ de gasolina A da RNEST e 0,44
+milhão da RPCC no ano, contra 22 mil e 2,5 mil m³ no histórico. Cerca
+de 1,2 milhão de m³ da produção do Nordeste no Planejado vem dessa
+hipótese.
+
+### 2. A REAM refina com o rendimento nacional
+
+**O quê.** Todo dia da REAM usa $R^{\text{BR}}$.
+
+**Onde.** Em 2025 a REAM não processou petróleo em 7 meses e registrou
+gasolina A em 5 meses sem carga nenhuma na destilação. No ano foram
+81.833 m³ de petróleo, 23.350 m³ de outras cargas e 341.136 m³ de
+gasolina A, mais de três vezes a carga inteira. Nenhum mês dela é
+válido.
+
+**Por quê.** A REAM produzia gasolina A refinando petróleo. Depois da
+privatização, deixou de refinar, e a gasolina registrada em 2025 não vem
+da destilação. O modelo trata a REAM como a refinaria que ela é
+fisicamente, com o rendimento médio do país, o que é razoável para uma
+planta que já refinou gasolina.
+
+**Efeito.** A REAM processa cerca de 2,5 milhões de m³ de petróleo no
+ano, contra 82 mil no histórico, e rende cerca de 0,67 milhão de m³ de
+gasolina A com o piso de 94%.
+
+### 3. Todas as plantas ficam disponíveis o ano inteiro
+
+**O quê.** No Planejado e na referência, toda refinaria fica no ar nos
+365 dias, entre o piso de 94% e o teto de 100%.
+
+**Onde.** O histórico tem paradas: a REAM sem petróleo em 7 meses, a
+RNEST em fevereiro (0% da capacidade) e a REVAP em outubro e novembro
+(34,2% e 0,1%). As da RNEST e da REVAP têm perfil de manutenção: a
+destilação para e as outras unidades seguem processando estoque.
+
+**Por quê.** O Planejado mede o que o parque entrega com as plantas
+disponíveis. O efeito de paradas de manutenção é estudado à parte, nos
+cenários `paradas_produtivas` e `manutencao_escalonada` de
+`docs/methodology.md`.
+
+**Efeito.** Com todas no ar e acima de 94%, o FUT (fator de utilização
+total) do Planejado fica perto de 97%, contra 82,12% no Histórico.
+
+### 4. Meses de operação parcial continuam no sorteio
+
+**O quê.** Um mês só sai do sorteio sem petróleo processado ou com
+rendimento acima de 1. Mês com a destilação rodando pouco continua.
+
+**Onde.** REVAP em outubro (34,2% da capacidade, rendimento 0,385) e em
+dezembro (87,3%, 0,275), e RNEST em janeiro (21,5%, 0,055) e em março
+(40,5%, 0,003). Saem do sorteio a REVAP em novembro, com rendimento de
+240 porque a destilação quase parou, e a RNEST em fevereiro, sem
+petróleo.
+
+**Por quê.** A regra usa só o que o dado mensal mostra, sem um corte de
+operação mínima.
+
+**Efeito.** Perto de uma parada, as unidades seguintes processam estoque
+e o rendimento do mês sobe. Na REVAP, a média do sorteio passa de 0,230,
+sem outubro, para 0,244.
+
+### 5. Outras cargas não entram no rendimento
+
+**O quê.** O rendimento divide a gasolina A só pelo petróleo. As outras
+cargas ocupam capacidade e entram no FUT, mas não viram gasolina no
+modelo.
+
+**Onde.** Em todas as plantas. As outras cargas são até cerca de 6% da
+carga, exceto na REAM, com 22%.
+
+**Por quê.** O plano decide só o petróleo, e a gasolina realizada é o
+petróleo vezes o rendimento. Calibrar o rendimento com o mesmo
+denominador mantém a conta coerente. A ANP não separa a gasolina por
+matéria-prima.
+
+**Efeito.** Pequeno. Incluir as outras cargas mudaria o rendimento do
+ano em no máximo 0,02, na REFAP (0,301 contra 0,281). Na REAM nenhum dos
+dois denominadores explica a produção.
+
+### 6. Uma capacidade para o ano inteiro
+
+**O quê.** A capacidade nominal de 31 de dezembro de 2025 vale em todos
+os meses.
+
+**Onde.** Em todas as plantas. Em fevereiro a REPAR processou 100,25%
+dessa capacidade, sinal de que ao menos um mês teve capacidade maior.
+
+**Por quê.** A ANP publica a capacidade como um retrato anual.
+
+**Efeito.** Mudanças de capacidade durante o ano não aparecem, e o teto
+de 100% impede reproduzir aquele mês da REPAR.
+
+### 7. Demanda regional pela população
+
+**O quê.** A demanda do país é dividida entre as regiões pela população
+do Censo 2022. O Centro-Oeste entra no Sudeste.
+
+**Onde.** Em todo o modelo. É o que define quanto cada região pede.
+
+**Por quê.** As vendas por região não foram curadas, e o Centro-Oeste
+não tem refinaria no catálogo.
+
+**Efeito.** Consumo per capita diferente entre regiões não aparece.
+
+### 8. A mesma mistura de etanol para toda a gasolina
+
+**O quê.** A fração de etanol da gasolina comum vale também para a
+premium.
+
+**Por quê.** A série da ANP não separa os dois tipos.
+
+**Efeito.** A demanda de gasolina A muda um pouco se a premium tiver
+outra fração.
+
+### 9. O dia é a média do mês
+
+**O quê.** Demanda, capacidade e outras cargas do mês são divididos
+igualmente pelos dias. Todo dia de um mesmo mês tem o mesmo valor. O
+petróleo de cada dia não vem do dado mensal: é decidido pelo plano. O
+rendimento também não segue essa regra: é sorteado a cada dia entre os
+meses válidos da refinaria.
+
+**Por quê.** Os dados da ANP são mensais. Do lado da produção, a
+aproximação é boa: a refinaria opera em regime contínuo, 24 horas por
+dia e sete dias por semana, e só para em manutenção ou incidente.
+
+**Efeito.** A simplificação pesa na demanda. As vendas variam com o dia
+da semana, feriados e fim do mês, e na prática os tanques de refinarias
+e distribuidoras absorvem essa variação. No modelo, a demanda muda só na
+virada do mês: de 89.852 m³ por dia em novembro para 104.757 m³ por dia
+em 1º de dezembro. Uma parada curta, de poucos dias, aparece só como uma
+carga mensal menor.
+
+### 10. A demanda é dado externo
+
+**O quê.** A demanda vem das vendas observadas em 2025 e não reage à
+produção.
+
+**Por quê.** O trabalho estuda a alocação da produção, não a formação
+de preços.
+
+**Efeito.** As vendas foram observadas no regime de preços de 2025.
+Outro regime mudaria a demanda.
+
+### 11. Toda remessa vai de caminhão
+
+**O quê.** O prazo de cada comboio é a rodovia a 60 km/h, sem paradas
+de descanso, com no mínimo 1 dia.
+
+**Onde.** Todas as rotas. A REAM, em Manaus, recebe e envia por estrada
+em 3 a 4 dias. As coordenadas de REAM, RECAP e RPCC vêm do OpenStreetMap
+porque a Wikipédia não as publica.
+
+**Por quê.** Uma regra única de transporte entre todas as refinarias.
+
+**Efeito.** Na prática, produto de Manaus costuma seguir de navio ou
+balsa. O prazo real da REAM pode ser outro. Detalhes em
+`docs/refinery_distances.md`.

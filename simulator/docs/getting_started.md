@@ -1,53 +1,71 @@
 # Primeiros passos
 
-Simulador acadêmico de alocação diária de gasolina A no Brasil em 2025.
-O painel Phoenix LiveView está em português. O núcleo MILP é Rust. Os CSVs
-em `data/curated/` são a fonte de verdade. Identificadores de código, nomes
-de arquivo e notação matemática permanecem em inglês.
+Simulador acadêmico da produção diária de gasolina A no Brasil em 2025.
+Gasolina A é a gasolina sem etanol, como sai da refinaria. O painel é
+web, em português. O núcleo de otimização é Rust. Os CSVs em
+`data/curated/` são a fonte de verdade. Identificadores de código, nomes
+de arquivo e notação matemática ficam em inglês.
 
 ## O que o painel faz
 
-Histórico 2025 lê `data/curated/historical_2025_summary.json` e não chama o
-solver. Planejado 2025 resolve os 365 dias pela capacidade das plantas.
-O rendimento $R_{i,d}$ é sorteado na execução, nos meses válidos daquela
-refinaria em 2025, e multiplica o petróleo que o plano mandou. O painel
-mostra o agregado mensal e anual. Não há estoque nacional. Planta que
-produziu acima do plano envia a sobra para a que ficou abaixo, em comboios
-de no máximo 30 m³, e só se o comboio tiver pelo menos 20 m³.
-Controles: ajuste de demanda, porcentagem de
-falha das entregas para cada refinaria de destino, derrubar e
-recuperar planta. O prazo de cada comboio é o tempo de caminhão da
-estrada, com mínimo de 1 dia. Cada entrega é um processo.
-A origem avisa a planta com falta e o volume entra na demanda no dia da
-chegada. A porcentagem vai de 0 a 100. Em 0 a remessa segue sem falha
-forçada. Em 100 toda entrega para aquela refinaria falha e a carga se
-perde. Origem e destino são avisados. A carga não volta para a origem
-e não entra na demanda. Depois de 3 perdas seguidas na mesma rota, a
-origem espera 10 dias antes de iniciar outra entrega para aquele
-destino. Na pausa, ela tenta a próxima planta com falta. Pular a rota não perde
-carga.
-Processo que não responde fica de fora do dia. Ao recuperar, a planta
-rampa de 40% até 100% a 1 p.p. por dia. O cartão
-de cada planta mostra o FUT do último dia resolvido e a gasolina A
-acumulada em m³, atualizados a cada dia do Planejado. O ano no painel
-leva pelo menos 30 s, para dar tempo de derrubar uma planta no meio.
-LUBNOR não entra: não produz gasolina A.
+- **Histórico 2025** lê o resumo curado do ano observado. Não chama o
+  solver.
+- **Planejado 2025** simula os 365 dias. Cada dia, um plano central
+  decide quanto petróleo cada refinaria processa. Um rendimento sorteado
+  transforma esse petróleo em gasolina. Comboios de caminhão levam a
+  sobra das regiões que refinam mais para as que refinam menos. O painel
+  mostra o ano, os meses e cada região.
+- **Controles**: ajuste de demanda em %, taxa de falha dos comboios para
+  cada refinaria de destino (começa em 1%) e os botões para derrubar e
+  recuperar uma planta no meio do ano. O ano leva pelo menos 30 s para
+  dar tempo de usar esses botões.
+- **Bateria** roda os 10 cenários de `docs/methodology.md` e grava os
+  CSVs em `data/studies/`.
+
+## Siglas
+
+| Sigla | Significado |
+|---|---|
+| ANP | Agência Nacional do Petróleo, Gás Natural e Biocombustíveis |
+| BEAM | Máquina virtual do Erlang, onde o Elixir roda |
+| CNPE | Conselho Nacional de Política Energética |
+| CSV | Arquivo de texto com valores separados por vírgula |
+| FUE | Fator de utilização efetivo, publicado pela ANP |
+| FUT | Fator de utilização total: fração da capacidade da refinaria ocupada pela destilação |
+| GenServer | Processo servidor do OTP |
+| HiGHS | Solver de código aberto de programação linear e inteira mista |
+| IBGE | Instituto Brasileiro de Geografia e Estatística |
+| JSON | Formato de texto para dados estruturados |
+| LiveView | Páginas do Phoenix atualizadas pelo servidor sem recarregar |
+| MILP | Programação linear inteira mista (*mixed-integer linear programming*) |
+| NIF | Função nativa, escrita fora da BEAM e chamada por ela |
+| OSRM | Open Source Routing Machine, roteador de mapas usado nas distâncias |
+| OTP | Open Telecom Platform, a biblioteca padrão do Erlang para processos supervisionados |
+| p.p. | Ponto percentual |
+| UF | Unidade da federação |
+| Mm³ | Milhões de metros cúbicos |
+
+Os códigos das refinarias (REAM, REPLAN e outras) estão com nome e UF em
+`docs/refinery_distances.md`. A LUBNOR, refinaria de lubrificantes do
+Nordeste, fica de fora porque não produz gasolina A.
 
 ## Documentação
 
 | Documento | Conteúdo |
 |---|---|
-| `docs/model_specification.md` | Conjuntos, restrições e FUT |
-| `docs/model_runtime.md` | Módulos Elixir e Rust, timeout e painel |
-| `docs/methodology.md` | Bateria de 10 cenários, 100 execuções e CSV |
-| `docs/data_report.md` | Fontes ANP e arquivos curados |
-| `docs/data_transformations.md` | Conversões, calibração e limitações |
+| `docs/model_specification.md` | Equações do plano diário, da execução, dos comboios e dos indicadores |
+| `docs/model_runtime.md` | Módulos Elixir e Rust, ciclo de um dia, solver e painel |
+| `docs/methodology.md` | Os 10 cenários da bateria e as colunas dos CSVs |
+| `docs/data_report.md` | Fontes da ANP e arquivos curados |
+| `docs/data_transformations.md` | Conversões dos dados e as hipóteses e simplificações do modelo |
+| `docs/other_charges.md` | Outras cargas e a definição de FUT |
+| `docs/refinery_distances.md` | Coordenadas, distâncias e tempo de caminhão |
 
 ## Pré-requisitos
 
 - Elixir 1.17 ou mais recente, com Erlang/OTP compatível
-- Rust e Cargo estáveis, usados na primeira compilação do crate nativo
-- Rede na primeira execução, para dependências Elixir, esbuild e tailwind
+- Rust e Cargo estáveis, para compilar o solver na primeira vez
+- Rede na primeira execução, para baixar dependências
 
 ## Execução
 
@@ -64,8 +82,4 @@ Painel: `http://localhost:4000/`
 
 ```
 cd native/gasoline_solver && cargo test
-```
-
-```
-mix test
 ```

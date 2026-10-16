@@ -6,13 +6,21 @@ defmodule GasolineSimulator.Solver do
 
   @type facility_input :: %{
           id: String.t(),
+          region: String.t(),
           capacity: number(),
           floor: number()
+        }
+
+  @type region_input :: %{
+          id: String.t(),
+          demand: number(),
+          landed: number()
         }
 
   @type solver_input :: %{
           demand: number(),
           landed: number(),
+          regions: [region_input()],
           facilities: [facility_input()]
         }
 
