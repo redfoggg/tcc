@@ -1,21 +1,27 @@
 defmodule GasolineSimulator.Scenarios.Methodology do
   alias GasolineSimulator.Data.Catalog
-  alias GasolineSimulator.Data.Regions
   alias GasolineSimulator.Data.Repository
   alias GasolineSimulator.Refineries.Distances
   alias GasolineSimulator.Scenarios.Export
   alias GasolineSimulator.Models.Problem
   alias GasolineSimulator.Scenarios.Runner
+  alias GasolineSimulator.Scenarios.Seed
   alias GasolineSimulator.Scenarios.YieldSampling
 
   @runs 10
   @productive_count 4
   @outage_count 2
   @outage_months 3
-  @blocked_roads 3
-  @corridor_weight 4
-  @supply_regions [:south, :southeast]
-  @short_regions [:north, :northeast]
+  @blocked_roads 2
+  # The six roads that carry about 82% of convoy volume in the reference.
+  @main_roads [
+    {"REAM", "REPLAN"},
+    {"REFMAT", "REPLAN"},
+    {"REAM", "REPAR"},
+    {"REFMAT", "REPAR"},
+    {"REAM", "REFAP"},
+    {"REFAP", "REFMAT"}
+  ]
 
   def runs, do: @runs
 
@@ -62,15 +68,20 @@ defmodule GasolineSimulator.Scenarios.Methodology do
         :band,
         :block
       ),
-      scenario("campanha_estavel", "Campanha estável", :campaign, 0.0, :all),
-      scenario("mobilidade_fut", "Mobilidade do FUT", :campaign, 0.0, :all, :mobile)
+      scenario("mobilidade_fut", "Mobilidade do FUT", :sample, 0.0, :all, :mobile)
     ]
   end
 
-  defp context do
+  defp context(seed) do
+    Seed.plant(seed, :context)
+
+    refineries_by_day = Repository.load_year().refineries_by_day
+
     %{
+      seed: seed,
       most_productive: most_productive(Repository.annual_gasoline_m3()),
-      route_rates: Map.new(1..@runs, &{&1, road_rates(1, 5)})
+      route_rates: Map.new(1..@runs, &{&1, road_rates(1, 5)}),
+      yields: Map.new(1..@runs, &{&1, YieldSampling.draw(refineries_by_day)})
     }
   end
 
@@ -83,7 +94,7 @@ defmodule GasolineSimulator.Scenarios.Methodology do
 
   def build(scenario, context) do
     {alive_ids, availability} = availability(scenario.availability, context)
-    limits = fut_limits(scenario.fut_mode, Map.get(context, :run, 1))
+    limits = fut_limits(scenario.fut_mode, context.run)
     closure = road_closure(scenario.roads)
     demand = monthly_demand(scenario.demand)
 
@@ -94,7 +105,7 @@ defmodule GasolineSimulator.Scenarios.Methodology do
         failure_pct: failure_draw(scenario.failure, context),
         demand_by_month: demand.by_month
       },
-      yields: yields_for(scenario, context),
+      yields: yield_fun(scenario.yield_mode, context),
       alive_ids: alive_ids,
       burst: limits.burst,
       sustainable: limits.sustainable,
@@ -104,20 +115,21 @@ defmodule GasolineSimulator.Scenarios.Methodology do
         availability: availability.label,
         offline_refineries: availability.offline_refineries,
         offline_months: availability.offline_months,
-        fut_lock: limits.sustainable,
+        fut_lock: limits.burst,
+        seed: context.seed,
         note: join_note(closure.note, demand.note)
       }
     }
   end
 
-  def run(output_dir, on_progress) do
+  def run(output_dir, seed, on_progress) do
     scenarios = scenarios()
     scenario_count = length(scenarios)
 
     File.mkdir_p!(output_dir)
     Export.open_manifest(output_dir)
 
-    study_context = context()
+    study_context = context(seed)
 
     jobs =
       scenarios
@@ -140,19 +152,19 @@ defmodule GasolineSimulator.Scenarios.Methodology do
   end
 
   defp jobs(scenario, index, study_context) do
-    shared_yields = shared_yields(scenario)
-
     Enum.map(1..@runs, fn run ->
+      Seed.plant(study_context.seed, {:build, scenario.id, run})
+
       %{
         scenario: scenario,
         index: index,
         run: run,
-        instance: build(scenario, run_context(study_context, run, shared_yields))
+        instance: build(scenario, Map.put(study_context, :run, run))
       }
     end)
   end
 
-  defp execute(job), do: {job, Runner.run(job.instance.params, runner_opts(job.instance))}
+  defp execute(job), do: {job, Runner.run(job.instance.params, runner_opts(job))}
 
   defp progress(job, scenario_count, completed) do
     %{
@@ -165,8 +177,10 @@ defmodule GasolineSimulator.Scenarios.Methodology do
     }
   end
 
-  defp runner_opts(instance) do
+  defp runner_opts(%{instance: instance} = job) do
     [
+      seed: instance.meta.seed,
+      seed_path: {job.scenario.id, job.run},
       min_year_ms: 0,
       yields: instance.yields,
       alive_ids: instance.alive_ids,
@@ -200,24 +214,6 @@ defmodule GasolineSimulator.Scenarios.Methodology do
     }
   end
 
-  defp run_context(context, run, nil), do: Map.put(context, :run, run)
-
-  defp run_context(context, run, shared_yields) do
-    context
-    |> Map.put(:run, run)
-    |> Map.put(:shared_yields, shared_yields)
-  end
-
-  defp shared_yields(%{fut_mode: :mobile}) do
-    Repository.load_year().refineries_by_day
-    |> YieldSampling.campaign()
-  end
-
-  defp shared_yields(_scenario), do: nil
-
-  defp yields_for(_scenario, %{shared_yields: drawn}) when not is_nil(drawn), do: fn _data -> drawn end
-  defp yields_for(scenario, _context), do: yield_fun(scenario.yield_mode)
-
   defp fut_limits(:fixed, _run) do
     %{
       burst: Problem.burst_utilization_ratio(),
@@ -226,27 +222,31 @@ defmodule GasolineSimulator.Scenarios.Methodology do
   end
 
   defp fut_limits(:mobile, run) do
+    ceiling = (78 + 2 * run) / 100
+
     %{
-      burst: Problem.burst_utilization_ratio(),
-      sustainable: (84 + run) / 100
+      burst: ceiling,
+      sustainable: min(Problem.sustainable_utilization_ratio(), ceiling)
     }
   end
 
-  defp failure_draw(:band, context), do: Map.fetch!(context.route_rates, Map.get(context, :run, 1))
+  defp failure_draw(:band, context),
+    do: Map.fetch!(context.route_rates, context.run)
+
   defp failure_draw(:high, _context), do: road_rates(41, 100)
 
   defp road_rates(min_pct, max_pct) do
-    Map.new(Distances.pairs(), fn pair -> {pair, Enum.random(min_pct..max_pct)} end)
+    Enum.reduce(Distances.pairs(), %{}, fn {a, b}, rates ->
+      pct = Enum.random(min_pct..max_pct)
+      Map.merge(rates, %{{a, b} => pct, {b, a} => pct})
+    end)
   end
 
   defp road_closure(:open), do: %{closed_roads: fn _day -> [] end, note: ""}
 
   defp road_closure(:block) do
-    pairs =
-      Distances.pairs()
-      |> Enum.sort_by(fn pair -> -:math.pow(:rand.uniform(), 1 / road_weight(pair)) end)
-      |> Enum.take(@blocked_roads)
-      |> Enum.sort()
+    pairs = @main_roads |> Enum.take_random(@blocked_roads) |> Enum.sort()
+
     start = Enum.random(1..11)
     months = [start, start + 1]
 
@@ -256,15 +256,6 @@ defmodule GasolineSimulator.Scenarios.Methodology do
       end,
       note: road_note(pairs, months)
     }
-  end
-
-  defp road_weight({left, right}) do
-    if corridor?(Regions.of_plant(left), Regions.of_plant(right)), do: @corridor_weight, else: 1
-  end
-
-  defp corridor?(left, right) do
-    (left in @supply_regions and right in @short_regions) or
-      (right in @supply_regions and left in @short_regions)
   end
 
   defp monthly_demand(:flat), do: %{by_month: %{}, note: ""}
@@ -284,9 +275,12 @@ defmodule GasolineSimulator.Scenarios.Methodology do
     "rotas #{listed} meses #{Enum.join(months, "|")}"
   end
 
-  defp yield_fun(:sample), do: &YieldSampling.draw/1
-  defp yield_fun(:campaign), do: &YieldSampling.campaign/1
-  defp yield_fun(:minimum), do: fn data -> YieldSampling.bound(data, :min) end
+  defp yield_fun(:sample, context) do
+    drawn = Map.fetch!(context.yields, context.run)
+    fn _data -> drawn end
+  end
+
+  defp yield_fun(:minimum, _context), do: fn data -> YieldSampling.bound(data, :min) end
 
   defp availability(:all, _context) do
     {fn _day -> Catalog.ids() end, blank_availability("all")}

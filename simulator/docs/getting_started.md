@@ -19,7 +19,7 @@ de arquivo e notação matemática ficam em inglês.
   cada refinaria de destino (começa em 1%) e os botões para derrubar e
   recuperar uma planta no meio do ano. O ano leva pelo menos 30 s para
   dar tempo de usar esses botões.
-- **Bateria** roda os 10 cenários de `docs/methodology.md` e grava os
+- **Bateria** roda os 9 cenários de `docs/methodology.md` e grava os
   CSVs em `data/studies/`.
 
 ## Siglas
@@ -37,7 +37,7 @@ de arquivo e notação matemática ficam em inglês.
 | IBGE | Instituto Brasileiro de Geografia e Estatística |
 | JSON | Formato de texto para dados estruturados |
 | LiveView | Páginas do Phoenix atualizadas pelo servidor sem recarregar |
-| MILP | Programação linear inteira mista (*mixed-integer linear programming*) |
+| LP | Programação linear (*linear programming*) |
 | NIF | Função nativa, escrita fora da BEAM e chamada por ela |
 | OSRM | Open Source Routing Machine, roteador de mapas usado nas distâncias |
 | OTP | Open Telecom Platform, a biblioteca padrão do Erlang para processos supervisionados |
@@ -55,7 +55,7 @@ Nordeste, fica de fora porque não produz gasolina A.
 |---|---|
 | `docs/model_specification.md` | Equações do plano diário, da execução, dos comboios e dos indicadores |
 | `docs/model_runtime.md` | Módulos Elixir e Rust, ciclo de um dia, solver e painel |
-| `docs/methodology.md` | Os 10 cenários da bateria e as colunas dos CSVs |
+| `docs/methodology.md` | Os 9 cenários da bateria e as colunas dos CSVs |
 | `docs/data_report.md` | Fontes da ANP e arquivos curados |
 | `docs/data_transformations.md` | Conversões dos dados e as hipóteses e simplificações do modelo |
 | `docs/other_charges.md` | Outras cargas e a definição de FUT |

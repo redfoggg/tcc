@@ -1,8 +1,8 @@
 # Especificação do modelo
 
 O Planejado 2025 resolve um problema por dia, nos 365 dias do ano. Cada
-problema é um MILP (programação linear inteira mista), resolvido pelo
-HiGHS, um solver de código aberto. O plano é central: uma única chamada
+problema é um LP (programação linear), resolvido pelo HiGHS, um solver
+de código aberto. O plano é central: uma única chamada
 decide quanto petróleo cada refinaria no ar processa. Depois, o
 rendimento sorteado transforma esse petróleo em gasolina A. Os comboios
 levam a sobra das regiões que refinam mais do que consomem para as que
@@ -136,10 +136,12 @@ saiu. Dia ruim aumenta a dívida e sobe o piso no dia seguinte. Dia bom
 reduz a dívida.
 
 $\rho^{\text{base}}_{i,d}$ vale 0,94 para quem está no ar. No cenário de
-mobilidade de FUT vai de 0,85 a 0,94. Planta que volta de uma parada
+mobilidade de FUT, o teto vai de 0,80 a 0,98, e o piso desce junto quando
+o teto fica abaixo de 0,94. Planta que volta de uma parada
 entra numa rampa: o degrau começa em 0,40 e sobe 0,01 em cada dia em que
 o déficit do país, $U_d$, fica em até 1 m³. Quando chega ao FUT aceitável,
-a rampa acaba. O plano sempre pode subir a planta até 100%.
+a rampa acaba. O plano pode subir a planta até o teto, que é 100% fora do
+cenário de mobilidade de FUT.
 
 ## Plano do dia
 
@@ -148,7 +150,6 @@ Variáveis, todas em m³ de petróleo:
 | Símbolo | Significado |
 |---|---|
 | $P_{i,d} \ge 0$ | Petróleo processado pela refinaria $i$ |
-| $y_{i,d} \in \{0,1\}$ | Planta ligada. Fica fixa em 1 para toda $i \in F_d$ |
 | $u_{r,d} \ge 0$ | Falta da região $r$ |
 | $E_{r,d} \ge 0$ | Sobra da região $r$ |
 | $u_d \ge 0$ | Falta do país |
@@ -179,7 +180,7 @@ $$
 Restrições:
 
 $$
-y_{i,d} \, L_{i,d} \le P_{i,d} \le y_{i,d} \, C_{i,d}
+L_{i,d} \le P_{i,d} \le C_{i,d}
 $$
 
 $$

@@ -10,13 +10,18 @@ defmodule GasolineSimulator.Scenarios.Runner do
   alias GasolineSimulator.Refineries.Logistics
   alias GasolineSimulator.Refineries.Plant
   alias GasolineSimulator.Refineries.Supervisor, as: PlantSupervisor
+  alias GasolineSimulator.Scenarios.Seed
   alias GasolineSimulator.Scenarios.YieldSampling
   alias GasolineSimulator.Solver
 
   @default_min_year_ms 30_000
 
   @spec run(map(), keyword()) :: {:ok, map()} | {:error, term()}
-  def run(params \\ %{}, opts \\ []) do
+  def run(params, opts) do
+    seed = Keyword.get(opts, :seed)
+    seed_path = Keyword.get(opts, :seed_path)
+    Seed.plant(seed, {:runner, seed_path})
+
     year_data = Repository.load_year(Keyword.take(opts, [:data_dir]))
 
     yields_for = Keyword.get(opts, :yields, &YieldSampling.draw/1)
@@ -34,10 +39,12 @@ defmodule GasolineSimulator.Scenarios.Runner do
       burst: Keyword.get(opts, :burst_utilization_ratio, Problem.burst_utilization_ratio()),
       sustainable:
         Keyword.get(opts, :sustainable_utilization_ratio, Problem.sustainable_utilization_ratio()),
-      failure_pct: Plant.failure_pct(param_failure_pct(params)),
+      failure_pct: params.failure_pct,
       closed_roads: Keyword.get(opts, :closed_roads, fn _day -> [] end),
       on_fleet: Keyword.get(opts, :on_fleet, fn _fleet -> :ok end),
-      observe_deliveries: Keyword.get(opts, :observe_deliveries, false)
+      observe_deliveries: Keyword.get(opts, :observe_deliveries, false),
+      seed: seed,
+      seed_path: seed_path
     }
 
     with {:ok, days, lost_m3} <- run_days(ctx) do
@@ -53,7 +60,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
 
   defp run_days(ctx) do
     run_id = make_ref()
-    fleet = Fleet.start(run_id, Catalog.ids(), ctx.observe_deliveries)
+    fleet = Fleet.start(run_id, Catalog.ids(), ctx.observe_deliveries, ctx.seed, ctx.seed_path)
     ctx.on_fleet.(fleet)
 
     try do
@@ -158,7 +165,16 @@ defmodule GasolineSimulator.Scenarios.Runner do
     {result, result.deficit_m3}
   end
 
-  defp maybe_dispatch(result, _day, _present, _ctx, carried_deficit, _landed_by_region, _opening_by_id, _landed_by_plant) do
+  defp maybe_dispatch(
+         result,
+         _day,
+         _present,
+         _ctx,
+         carried_deficit,
+         _landed_by_region,
+         _opening_by_id,
+         _landed_by_plant
+       ) do
     {result, carried_deficit}
   end
 
@@ -210,7 +226,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
 
     refineries =
       Enum.map(result.refineries, fn refinery ->
-        Map.put(refinery, :stock_m3, Map.get(stock_by_id, refinery.id, 0.0))
+        Map.put(refinery, :stock_m3, Map.fetch!(stock_by_id, refinery.id))
       end)
 
     %{result | refineries: refineries, stock_by_id: stock_by_id}
@@ -223,11 +239,11 @@ defmodule GasolineSimulator.Scenarios.Runner do
     end
   end
 
-  defp empty_year(_ctx) do
+  defp empty_year(ctx) do
     %{
       acc: [],
       prior: :start,
-      planning_yield: nil,
+      planning_yield: ctx.year_data.national_average_yield,
       gasoline_m3: 0.0,
       petroleum_m3: 0.0,
       carried_deficit: 0.0,
@@ -242,7 +258,12 @@ defmodule GasolineSimulator.Scenarios.Runner do
     planning_yield =
       if petroleum_m3 > 0.0, do: gasoline_m3 / petroleum_m3, else: state.planning_yield
 
-    %{state | gasoline_m3: gasoline_m3, petroleum_m3: petroleum_m3, planning_yield: planning_yield}
+    %{
+      state
+      | gasoline_m3: gasoline_m3,
+        petroleum_m3: petroleum_m3,
+        planning_yield: planning_yield
+    }
   end
 
   defp default_alive_ids(_day), do: PlantSupervisor.alive_ids()
@@ -268,11 +289,41 @@ defmodule GasolineSimulator.Scenarios.Runner do
     :ok
   end
 
-  defp solve_day(day, landed, landed_by_region, ctx, alive, planning_yield, carried_deficit, stock_by_region, plant_catch_up) do
-    chosen_day(day, landed, landed_by_region, ctx, alive, planning_yield, carried_deficit, stock_by_region, plant_catch_up)
+  defp solve_day(
+         day,
+         landed,
+         landed_by_region,
+         ctx,
+         alive,
+         planning_yield,
+         carried_deficit,
+         stock_by_region,
+         plant_catch_up
+       ) do
+    chosen_day(
+      day,
+      landed,
+      landed_by_region,
+      ctx,
+      alive,
+      planning_yield,
+      carried_deficit,
+      stock_by_region,
+      plant_catch_up
+    )
   end
 
-  defp chosen_day(day, landed, landed_by_region, ctx, alive, planning_yield, carried_deficit, stock_by_region, plant_catch_up) do
+  defp chosen_day(
+         day,
+         landed,
+         landed_by_region,
+         ctx,
+         alive,
+         planning_yield,
+         carried_deficit,
+         stock_by_region,
+         plant_catch_up
+       ) do
     day_yields = Map.fetch!(ctx.simulated_yields, day)
     demand = Map.fetch!(ctx.year_data.demand_by_day, day).demand_m3
 
@@ -283,7 +334,10 @@ defmodule GasolineSimulator.Scenarios.Runner do
       |> Enum.map(fn refinery ->
         refinery
         |> Map.put(:simulated_yield, Map.fetch!(day_yields, refinery.id))
-        |> Map.put(:min_utilization_ratio, catch_up_ratio(refinery, planning_yield, ctx, plant_catch_up))
+        |> Map.put(
+          :min_utilization_ratio,
+          catch_up_ratio(refinery, planning_yield, ctx, plant_catch_up)
+        )
         |> Map.put(:max_utilization_ratio, ctx.burst)
       end)
 
@@ -305,16 +359,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
   defp catch_up_ratio(refinery, planning_yield, ctx, plant_catch_up) do
     base = Plant.floor_ratio(refinery.id, ctx.run_id)
     owed = Map.get(plant_catch_up, refinery.id, 0.0)
-    capacity = refinery.processing_capacity_m3
-    yield = planning_yield || Map.get(refinery, :national_average_yield) || 1.0
-
-    extra =
-      if capacity > 0.0 and yield > 0.0 and owed > 0.0 do
-        owed / yield / capacity
-      else
-        0.0
-      end
-
+    extra = owed / planning_yield / refinery.processing_capacity_m3
     min(ctx.burst, base + extra)
   end
 
@@ -334,12 +379,6 @@ defmodule GasolineSimulator.Scenarios.Runner do
       })
     end)
   end
-
-  defp param_failure_pct(params) when is_map(params) do
-    Map.get(params, :failure_pct) || Map.get(params, "failure_pct") || %{}
-  end
-
-  defp param_failure_pct(_params), do: %{}
 
   defp overrides(params) do
     values =
@@ -397,7 +436,6 @@ defmodule GasolineSimulator.Scenarios.Runner do
         capacity_m3: sum(rows, :capacity_m3),
         floor_m3: sum(rows, :floor_m3),
         simulated_yield: yield,
-        active: Enum.any?(rows, & &1.active),
         fut_pct: (petroleum + other_charges) / processing_capacity * 100.0
       }
     end)
@@ -424,23 +462,24 @@ defmodule GasolineSimulator.Scenarios.Runner do
       total_fut_pct: (petroleum + other_charges) / capacity * 100.0,
       landed_m3: sum(periods, :landed_m3),
       excess_m3: sum(periods, :excess_m3),
-      plant_stock_m3: plant_stock_total(List.last(periods)),
+      plant_stock_m3:
+        periods |> List.last() |> Map.fetch!(:stock_by_id) |> Map.values() |> Enum.sum(),
       coverage: served_demand_m3 / demand_m3,
       regions: regional_totals(periods)
     }
   end
 
   defp regional_totals(periods) do
-    stock_by_region = periods |> List.last() |> stock_by_region()
+    stock_by_region = periods |> List.last() |> Map.fetch!(:stock_by_id) |> by_region()
 
     Enum.map(Regions.ids(), fn id ->
       rows =
         periods
-        |> Enum.flat_map(&Map.get(&1, :regions, []))
+        |> Enum.flat_map(& &1.regions)
         |> Enum.filter(&(&1.id == id))
 
       demand_m3 = Enum.sum_by(rows, & &1.demand_m3)
-      produced_m3 = Enum.sum_by(rows, &Map.get(&1, :produced_m3, 0.0))
+      produced_m3 = Enum.sum_by(rows, & &1.produced_m3)
       supply_m3 = Enum.sum_by(rows, & &1.supply_m3)
       served_m3 = min(demand_m3, supply_m3)
 
@@ -449,14 +488,11 @@ defmodule GasolineSimulator.Scenarios.Runner do
         demand_m3: demand_m3,
         produced_m3: produced_m3,
         served_m3: served_m3,
-        stock_m3: Map.get(stock_by_region, id, 0.0),
+        stock_m3: Map.fetch!(stock_by_region, id),
         coverage: if(demand_m3 == 0.0, do: 0.0, else: served_m3 / demand_m3)
       }
     end)
   end
-
-  defp stock_by_region(%{stock_by_id: stocks}) when is_map(stocks), do: by_region(stocks)
-  defp stock_by_region(_period), do: %{}
 
   defp year_coverage(annual, lost_m3) do
     available = annual.production_m3 - lost_m3
@@ -480,9 +516,6 @@ defmodule GasolineSimulator.Scenarios.Runner do
   defp share(part, total), do: part / total
 
   defp sum(periods, field), do: Enum.sum_by(periods, &Map.fetch!(&1, field))
-
-  defp plant_stock_total(%{stock_by_id: stocks}) when is_map(stocks), do: Enum.sum(Map.values(stocks))
-  defp plant_stock_total(_period), do: 0.0
 
   defp transport_losses(run_id) do
     Enum.sum_by(Catalog.ids(), fn id ->

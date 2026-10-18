@@ -5,7 +5,7 @@ This is a web application written using the Phoenix web framework.
 `GasolineSimulator.Solver.solve/2` accepts a `:timeout` option in milliseconds. That same
 budget, converted to seconds, is passed into the Rust NIF (`GasolineSimulator.Solver.Native.solve_nif/2`)
 and applied to the HiGHS model via `good_lp`'s `WithTimeLimit` (`good_lp::solvers::WithTimeLimit`).
-This keeps the outer Elixir wait and the underlying MILP solver's own time budget consistent with
+This keeps the outer Elixir wait and the underlying LP solver's own time budget consistent with
 each other.
 
 If HiGHS stops because of the time limit, the native `solve` returns `SolverError::Timeout`, which

@@ -76,11 +76,10 @@ defmodule GasolineSimulator.Refineries.Distances do
   end
 
   def pair({origin, destination}) do
-    [first, second] = Enum.sort([to_string(origin), to_string(destination)])
+    [first, second] = Enum.sort([origin, destination])
     {first, second}
   end
 
-  def pair([origin, destination]), do: pair({origin, destination})
   def pair(origin, destination), do: pair({origin, destination})
 
   def pair_key(pair) do

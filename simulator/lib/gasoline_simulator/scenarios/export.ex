@@ -5,6 +5,7 @@ defmodule GasolineSimulator.Scenarios.Export do
     :scenario_id,
     :scenario_name,
     :run,
+    :seed,
     :status,
     :yield_mode,
     :demand_adjustment_pct,
@@ -46,7 +47,6 @@ defmodule GasolineSimulator.Scenarios.Export do
     :other_charges_m3,
     :processing_capacity_m3,
     :fut_pct,
-    :active,
     :stock_m3,
     :day_demand_m3,
     :day_production_m3,
@@ -111,7 +111,6 @@ defmodule GasolineSimulator.Scenarios.Export do
       other_charges_m3: refinery.other_charges_m3,
       processing_capacity_m3: refinery.processing_capacity_m3,
       fut_pct: refinery.fut_pct,
-      active: flag(refinery.active),
       stock_m3: stock_m3(day, refinery.id)
     })
   end
@@ -128,7 +127,6 @@ defmodule GasolineSimulator.Scenarios.Export do
       other_charges_m3: 0.0,
       processing_capacity_m3: nil,
       fut_pct: nil,
-      active: 0,
       stock_m3: stock_m3(day, id)
     })
   end
@@ -210,6 +208,7 @@ defmodule GasolineSimulator.Scenarios.Export do
       scenario_id: scenario.id,
       scenario_name: scenario.name,
       run: run,
+      seed: instance.meta.seed,
       yield_mode: instance.meta.yield_mode,
       demand_adjustment_pct: instance.params.demand_adjustment_pct,
       transit_days: instance.params.transit_days,
@@ -235,9 +234,6 @@ defmodule GasolineSimulator.Scenarios.Export do
   end
 
   defp pad(run), do: run |> Integer.to_string() |> String.pad_leading(2, "0")
-
-  defp flag(true), do: 1
-  defp flag(false), do: 0
 
   defp line(columns), do: [Enum.join(columns, ","), "\n"]
 

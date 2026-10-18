@@ -9,8 +9,8 @@ defmodule GasolineSimulator.Models.Problem do
     :landed_m3,
     :planning_yield,
     :carried_deficit_m3,
-    stock_by_region: %{},
-    landed_by_region: %{},
+    :stock_by_region,
+    :landed_by_region,
     refineries: []
   ]
 
@@ -43,10 +43,10 @@ defmodule GasolineSimulator.Models.Problem do
       month: attrs.month,
       demand_m3: attrs.demand_m3,
       landed_m3: attrs.landed_m3,
-      planning_yield: planning_yield(attrs),
-      carried_deficit_m3: Map.get(attrs, :carried_deficit_m3, 0.0),
-      stock_by_region: Map.get(attrs, :stock_by_region, %{}),
-      landed_by_region: Map.get(attrs, :landed_by_region, %{}),
+      planning_yield: attrs.planning_yield,
+      carried_deficit_m3: attrs.carried_deficit_m3,
+      stock_by_region: attrs.stock_by_region,
+      landed_by_region: attrs.landed_by_region,
       refineries: refineries
     })
   end
@@ -90,17 +90,8 @@ defmodule GasolineSimulator.Models.Problem do
   end
 
   defp apply_min_utilization(refinery) do
-    ratio = Map.get(refinery, :min_utilization_ratio, @min_utilization_ratio)
-    Map.put(refinery, :floor_m3, campaign_petroleum(refinery, ratio))
+    Map.put(refinery, :floor_m3, campaign_petroleum(refinery, refinery.min_utilization_ratio))
   end
-
-  defp planning_yield(%{planning_yield: yield}) when is_number(yield) and yield > 0.0, do: yield
-
-  defp planning_yield(%{refineries: [%{national_average_yield: yield} | _]})
-       when is_number(yield) and yield > 0.0,
-       do: yield
-
-  defp planning_yield(_attrs), do: 1.0
 
   defp campaign_petroleum(refinery, utilization) do
     max(utilization * refinery.processing_capacity_m3 - refinery.other_charges_m3, 0.0)

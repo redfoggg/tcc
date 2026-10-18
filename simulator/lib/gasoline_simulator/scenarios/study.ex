@@ -2,6 +2,7 @@ defmodule GasolineSimulator.Scenarios.Study do
   use GenServer
 
   alias GasolineSimulator.Scenarios.Methodology
+  alias GasolineSimulator.Scenarios.Seed
 
   @pubsub GasolineSimulator.PubSub
   @topic "studies"
@@ -10,8 +11,8 @@ defmodule GasolineSimulator.Scenarios.Study do
     GenServer.start_link(__MODULE__, :ok, name: Keyword.get(opts, :name, __MODULE__))
   end
 
-  def start(server \\ __MODULE__) do
-    GenServer.call(server, :start)
+  def start(seed \\ nil, server \\ __MODULE__) do
+    GenServer.call(server, {:start, seed || Seed.new()})
   end
 
   def status(server \\ __MODULE__) do
@@ -28,6 +29,7 @@ defmodule GasolineSimulator.Scenarios.Study do
      %{
        status: :idle,
        output_dir: nil,
+       seed: nil,
        scenario_id: nil,
        scenario_index: 0,
        scenario_count: length(Methodology.scenarios()),
@@ -40,23 +42,26 @@ defmodule GasolineSimulator.Scenarios.Study do
   end
 
   @impl true
-  def handle_call(:start, _from, %{status: :running} = state) do
+  def handle_call({:start, _seed}, _from, %{status: :running} = state) do
     {:reply, {:error, :already_running}, state}
   end
 
-  def handle_call(:start, _from, state) do
+  def handle_call({:start, seed}, _from, state) do
     output_dir = Path.join(studies_dir(), timestamp())
     parent = self()
 
     %{ref: ref} =
       Task.Supervisor.async_nolink(GasolineSimulator.Scenarios.TaskSupervisor, fn ->
-        Methodology.run(output_dir, fn progress -> send(parent, {:study_progress, progress}) end)
+        Methodology.run(output_dir, seed, fn progress ->
+          send(parent, {:study_progress, progress})
+        end)
       end)
 
     state = %{
       state
       | status: :running,
         output_dir: output_dir,
+        seed: seed,
         error: nil,
         ref: ref,
         scenario_id: nil,
@@ -104,6 +109,7 @@ defmodule GasolineSimulator.Scenarios.Study do
     Map.take(state, [
       :status,
       :output_dir,
+      :seed,
       :scenario_id,
       :scenario_index,
       :scenario_count,

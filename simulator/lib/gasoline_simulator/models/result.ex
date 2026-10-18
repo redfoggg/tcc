@@ -42,9 +42,9 @@ defmodule GasolineSimulator.Models.Result do
           refineries: [map()]
         }
 
-  @spec from_solver(Problem.t(), {:ok, map()} | {:error, {atom(), String.t()}}) :: t()
-  def from_solver(%Problem{} = problem, {:ok, native_result}) do
-    refineries = merge_refineries(problem, native_result.facilities)
+  @spec from_solver(Problem.t(), {:ok, [map()]} | {:error, {atom(), String.t()}}) :: t()
+  def from_solver(%Problem{} = problem, {:ok, facilities}) do
+    refineries = merge_refineries(problem, facilities)
     production_m3 = Enum.sum_by(refineries, & &1.allocated_m3)
     covered_m3 = production_m3 + problem.landed_m3
     deficit_m3 = max(problem.demand_m3 - covered_m3, 0.0)
@@ -132,24 +132,6 @@ defmodule GasolineSimulator.Models.Result do
     }
   end
 
-  def withhold_shipments(%__MODULE__{} = result, shipped) when shipped <= 0.0, do: result
-
-  def withhold_shipments(%__MODULE__{} = result, shipped) do
-    available_m3 = result.production_m3 - shipped + result.landed_m3
-    deficit_m3 = max(result.demand_m3 - available_m3, 0.0)
-    excess_m3 = max(available_m3 - result.demand_m3, 0.0)
-    served_demand_m3 = result.demand_m3 - deficit_m3
-
-    %{
-      result
-      | balance_m3: available_m3 - result.demand_m3,
-        excess_m3: excess_m3,
-        served_demand_m3: served_demand_m3,
-        deficit_m3: deficit_m3,
-        coverage: coverage(served_demand_m3, result.demand_m3)
-    }
-  end
-
   defp merge_refineries(problem, facility_results) do
     facility_by_id = Map.new(facility_results, &{&1.id, &1})
 
@@ -167,7 +149,6 @@ defmodule GasolineSimulator.Models.Result do
         :other_charges_m3,
         :floor_m3
       ])
-      |> Map.merge(Map.take(facility, [:active]))
       |> Map.put(:petroleum_processed_m3, facility.allocated)
       |> Map.put(:planned_m3, facility.allocated * problem.planning_yield)
       |> Map.put(:allocated_m3, facility.allocated * refinery.simulated_yield)

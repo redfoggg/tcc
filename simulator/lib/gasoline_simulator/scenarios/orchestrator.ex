@@ -57,7 +57,6 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
 
   @impl true
   def handle_call({:run_plan, params}, _from, state) do
-    {min_year_ms, params} = Map.pop(params, :min_year_ms)
     id = generate_id()
     plan = %Plan{id: id, params: params, status: :running, started_at: DateTime.utc_now()}
     pid = self()
@@ -69,11 +68,6 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
       on_fleet: &GenServer.cast(pid, {:fleet_started, id, &1}),
       on_day: &GenServer.cast(pid, {:day_progress, &1})
     ]
-
-    runner_opts =
-      if is_integer(min_year_ms),
-        do: Keyword.put(runner_opts, :min_year_ms, min_year_ms),
-        else: runner_opts
 
     %{ref: ref} =
       Task.Supervisor.async_nolink(state.task_supervisor, Runner, :run, [params, runner_opts])
@@ -168,7 +162,7 @@ defmodule GasolineSimulator.Scenarios.Orchestrator do
   end
 
   defp accumulate_progress(progress, day) do
-    stocks = Map.get(day, :stock_by_id, %{})
+    stocks = day.stock_by_id
     zeroed = Map.new(progress, fn {id, stats} -> {id, %{stats | fut_pct: 0.0}} end)
 
     progressed =

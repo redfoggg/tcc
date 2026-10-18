@@ -12,6 +12,7 @@ STUDIES = ROOT / "data" / "studies"
 HISTORICAL = ROOT / "data" / "curated" / "historical_2025_summary.json"
 PRODUCTION = ROOT / "data" / "curated" / "anp_2025_gasoline_a_production_by_refinery_monthly.csv"
 REFERENCE = "referencia"
+CEILING = "mobilidade_fut"
 MEGA = 1_000_000.0
 CAP_FUT_PCT = 99.5
 CONFIDENCE = 0.95
@@ -81,7 +82,7 @@ def summary(values):
         "n": data.size,
         "mean": mean,
         "std": float(np.std(data, ddof=1)),
-        "cv": abs(float(stats.variation(data, ddof=1))) if mean else 0.0,
+        "cv": float(stats.variation(data, ddof=1)) if mean else 0.0,
         "min": float(np.min(data)),
         "max": float(np.max(data)),
         "ci95_low": float(low),
@@ -105,14 +106,6 @@ def difference(values, reference):
 
 
 def welch(left, right):
-    if constant(right):
-        test = stats.ttest_1samp(left, right[0])
-        interval = test.confidence_interval(CONFIDENCE)
-        return test.pvalue, interval.low - right[0], interval.high - right[0]
-    if constant(left):
-        test = stats.ttest_1samp(right, left[0])
-        interval = test.confidence_interval(CONFIDENCE)
-        return test.pvalue, left[0] - interval.high, left[0] - interval.low
     test = stats.ttest_ind(left, right, equal_var=False)
     interval = test.confidence_interval(CONFIDENCE)
     return test.pvalue, interval.low, interval.high
@@ -286,6 +279,28 @@ def entity_rows(scenarios, section, column, metrics):
     ]
 
 
+def ceiling_rows(scenarios):
+    reference = {row["run"]: row for row in scenarios[REFERENCE]["rows"]}
+    runs = zip(scenarios[CEILING]["rows"], scenarios[CEILING]["details"])
+    return [
+        {
+            "run": int(row["run"]),
+            "ceiling_pct": float(row["fut_lock"]) * 100,
+            "annual_fut_pct": float(row["annual_fut_pct"]),
+            "production_mm3": float(row["annual_production_m3"]) / MEGA,
+            "effective_coverage_pct": float(row["annual_effective_coverage"]) * 100,
+            "effective_coverage_delta_pp": (
+                float(row["annual_effective_coverage"]) - float(reference[row["run"]]["annual_effective_coverage"])
+            )
+            * 100,
+            "deficit_mm3": float(row["annual_deficit_m3"]) / MEGA,
+            "deficit_days": details["daily"]["deficit_days"],
+            "deficit_sum_mm3": details["daily"]["deficit_sum_mm3"],
+        }
+        for row, details in sorted(runs, key=lambda pair: float(pair[0]["fut_lock"]))
+    ]
+
+
 def write_csv(path, rows):
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]), lineterminator="\n")
@@ -435,10 +450,15 @@ def historical_coverage_section(scenarios, historical):
         "A demanda de cada região é a fatia populacional da demanda do país, pelo Censo 2022, com o "
         "Centro-Oeste somado ao Sudeste, como no modelo. A cobertura nacional do Histórico é a produção "
         "observada sobre a demanda, sem perdas, porque o Histórico não tem comboios. A parte que faltou foi "
-        "coberta por importação e estoque, que ficam fora do modelo. Os dados não dizem quanta gasolina "
-        "passou de uma região para outra, então a cobertura efetiva do Histórico é um intervalo. O menor "
-        "valor supõe que nenhuma região mandou gasolina para outra. O maior supõe que toda a sobra chegou "
-        "onde faltava, e por isso é igual à cobertura nacional.",
+        "coberta por importação e estoque, que ficam fora do modelo.",
+        "",
+        "A cobertura efetiva do Histórico é um intervalo, e não um valor único, porque a ANP informa quanto "
+        "cada refinaria produziu, mas não quanta gasolina foi levada de uma região para outra. Na simulação, "
+        "cada comboio é registrado, então a cobertura efetiva sai exata. O menor valor supõe que nenhuma "
+        "região mandou gasolina para outra, e a sobra do Sul e do Sudeste ficou parada. O maior supõe que "
+        "toda a sobra chegou onde faltava, e por isso é igual à cobertura nacional. O valor real de 2025 "
+        "está entre os dois. Esse intervalo não é um intervalo de confiança: ele não vem da variação dos "
+        "sorteios, e sim da falta de dado sobre o transporte, então não diminui com mais execuções.",
         "",
     ]
     regional_intro = [
@@ -476,6 +496,36 @@ def daily_section(scenarios):
         "",
         "A falta do dia é a soma do que cada região não cobriu naquele dia, com tanque, produção e "
         "chegadas. Ela mede quando a gasolina não estava na região certa, mesmo que o ano feche coberto.",
+        "",
+    ]
+    return intro + table(headers, rows)
+
+
+def ceiling_section(ceiling):
+    rows = [
+        [
+            fmt(row["ceiling_pct"], 0),
+            fmt(row["annual_fut_pct"], 1),
+            fmt(row["production_mm3"]),
+            fmt(row["effective_coverage_pct"]),
+            fmt(row["effective_coverage_delta_pp"]),
+            fmt(row["deficit_mm3"]),
+            row["deficit_days"],
+            fmt(row["deficit_sum_mm3"], 3),
+        ]
+        for row in ceiling
+    ]
+    headers = [
+        "Teto (%)", "FUT (%)", "Produção (Mm³)", "Cobertura efetiva (%)", "Δ cobertura efetiva (p.p.)",
+        "Déficit nacional (Mm³)", "Dias com falta", "Falta diária somada (Mm³)",
+    ]
+    intro = [
+        "## Mobilidade do FUT por teto",
+        "",
+        f"Cada execução de `{CEILING}` tem um teto de FUT, então as execuções não são repetições e a média "
+        "da tabela anual mistura tetos diferentes. Aqui cada linha é uma execução. Δ é a cobertura efetiva "
+        "da execução menos a da execução de mesmo número da referência, que tem teto de 100% e as mesmas "
+        "taxas de falha.",
         "",
     ]
     return intro + table(headers, rows)
@@ -524,11 +574,17 @@ def refinery_section(scenarios):
     return intro + table(headers, rows)
 
 
-def report(study, scenarios, monthly):
+def seed_line(scenarios):
+    seed = scenarios[REFERENCE]["rows"][0]["seed"]
+    return [f"Semente `{seed}`. Rodar a bateria com a mesma semente reproduz estes números.", ""]
+
+
+def report(study, scenarios, monthly, ceiling):
     historical = json.loads(HISTORICAL.read_text(encoding="utf-8"))["annual"]
     lines = [
         f"# Análise da bateria `{study.name}`",
         "",
+        *seed_line(scenarios),
         "Cada cenário tem 10 execuções. Média ± desvio padrão (dp) resume as execuções. "
         "IC 95% é o intervalo de confiança de 95% da média, pela distribuição t de Student. "
         "Mm³ são milhões de m³ e p.p. são pontos percentuais.",
@@ -539,6 +595,7 @@ def report(study, scenarios, monthly):
     lines += historical_section(scenarios, historical)
     lines += historical_coverage_section(scenarios, historical)
     lines += daily_section(scenarios)
+    lines += ceiling_section(ceiling)
     lines += monthly_section(scenarios, monthly)
     lines += regional_coverage_section(scenarios)
     lines += region_section(scenarios)
@@ -563,8 +620,10 @@ def main():
     write_csv(output / "scenario_monthly.csv", monthly)
     write_csv(output / "scenario_refineries.csv", entity_rows(scenarios, "plants", "refinery_id", PLANT))
     write_csv(output / "scenario_regions.csv", entity_rows(scenarios, "regions", "region", REGION))
+    ceiling = ceiling_rows(scenarios)
+    write_csv(output / "scenario_ceiling.csv", ceiling)
 
-    text = report(study, scenarios, monthly)
+    text = report(study, scenarios, monthly, ceiling)
     (output / "report.md").write_text(text + "\n", encoding="utf-8")
     print(text)
     print(f"\nArquivos em {output}")

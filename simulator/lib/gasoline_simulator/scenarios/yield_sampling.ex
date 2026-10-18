@@ -13,19 +13,6 @@ defmodule GasolineSimulator.Scenarios.YieldSampling do
     end)
   end
 
-  @spec campaign(map()) :: map()
-  def campaign(refineries_by_period) do
-    chosen =
-      refineries_by_period
-      |> Map.values()
-      |> hd()
-      |> Map.new(&{&1.id, sample(&1)})
-
-    Map.new(refineries_by_period, fn {period, refineries} ->
-      {period, Map.new(refineries, &{&1.id, Map.fetch!(chosen, &1.id)})}
-    end)
-  end
-
   defp sample(refinery) do
     drawn =
       case refinery.observed_monthly_yields do

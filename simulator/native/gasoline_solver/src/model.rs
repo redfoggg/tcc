@@ -27,17 +27,4 @@ pub struct SolverInput {
 pub struct FacilityResult {
     pub id: String,
     pub allocated: f64,
-    pub active: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, NifMap)]
-pub struct SolverOutput {
-    pub demand: f64,
-    pub landed: f64,
-    pub excess: f64,
-    pub production: f64,
-    pub served_demand: f64,
-    pub deficit: f64,
-    pub coverage: f64,
-    pub facilities: Vec<FacilityResult>,
 }

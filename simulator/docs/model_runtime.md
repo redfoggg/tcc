@@ -34,8 +34,9 @@ NIF (função nativa implementada fora da BEAM) gerado pelo Rustler.
 | `Models.Plan` | Estado em memória de uma execução |
 | `Scenarios.Runner` | Percorre os 365 dias e guarda o que passa de um dia para o outro |
 | `Scenarios.Orchestrator` | Execuções do painel, monitor das plantas e PubSub (avisos do servidor para a página) |
-| `Scenarios.Methodology` | Os dez cenários da bateria e a montagem de cada execução |
+| `Scenarios.Methodology` | Os nove cenários da bateria e a montagem de cada execução |
 | `Scenarios.Study` | Roda a bateria em segundo plano, sem mexer nas plantas do painel |
+| `Scenarios.Seed` | Semeia cada processo que sorteia a partir da semente da bateria e do papel dele, para a bateria ser reproduzível |
 | `Scenarios.Export` | CSV de cada execução e `manifest.csv` |
 | `Solver` / `Solver.Native` | Limite de tempo e chamada ao NIF |
 
@@ -98,9 +99,9 @@ rampa. A lista de entregas a caminho mostra só os comboios do Planejado.
 
 ## Bateria
 
-O botão "Rodar bateria" roda os dez cenários de `docs/methodology.md`,
+O botão "Rodar bateria" roda os nove cenários de `docs/methodology.md`,
 dez vezes cada, e grava os CSVs em `data/studies/`. A bateria usa a
-própria lista de plantas no ar e não espera os 30 s. As 100 execuções
+própria lista de plantas no ar e não espera os 30 s. As 90 execuções
 rodam ao mesmo tempo, cada uma com a própria árvore de processos. Uma
 execução não espera pelas plantas de outra nem vê os dados dela. Planta
 fora do ar num cenário de parada continua viva na árvore e guarda o

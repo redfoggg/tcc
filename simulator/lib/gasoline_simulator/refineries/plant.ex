@@ -5,12 +5,12 @@ defmodule GasolineSimulator.Refineries.Plant do
   alias GasolineSimulator.Refineries.Delivery
   alias GasolineSimulator.Refineries.DeliverySupervisor
   alias GasolineSimulator.Refineries.Distances
+  alias GasolineSimulator.Scenarios.Seed
 
   @registry GasolineSimulator.Refineries.Registry
   @consecutive_loss_limit 3
   @route_pause_days 10
   @failure_scale 100
-  @default_failure_pct 1
   @ratio_step 0.01
 
   def child_spec(attrs) do
@@ -27,62 +27,31 @@ defmodule GasolineSimulator.Refineries.Plant do
 
   def arrivals(id, day, run_id), do: call({run_id, id}, {:arrivals, day})
 
-  def ship(id, volume, day, peer_ids, run_id, failure_pct \\ %{}, closed_roads \\ MapSet.new()) do
+  def ship(id, volume, day, peer_ids, run_id, failure_pct, closed_roads) do
     call({run_id, id}, {:ship, volume, day, peer_ids, failure_pct, closed_roads})
   end
-
-  def failure_pct(values) when is_map(values) do
-    Enum.reduce(values, %{}, fn {key, pct}, acc ->
-      pct = clamp_failure_pct(pct)
-
-      Enum.reduce(failure_keys(key), acc, fn failure_key, acc ->
-        Map.put(acc, failure_key, pct)
-      end)
-    end)
-  end
-
-  def failure_pct(_values), do: %{}
 
   def consecutive_loss_limit, do: @consecutive_loss_limit
 
   def route_pause_days, do: @route_pause_days
 
-  def default_failure_pct, do: @default_failure_pct
-
-  def hold(id, volume, run_id), do: call({run_id, id}, {:hold, volume})
-
-  def credit(id, volume, run_id) when is_number(volume) and volume > 0.0 do
+  def credit(id, volume, run_id) when volume > 0.0 do
     call({run_id, id}, {:credit, volume})
   end
 
   def credit(_id, _volume, _run_id), do: :ok
 
-  def draw(id, volume, run_id) when is_number(volume) and volume > 0.0 do
-    call({run_id, id}, {:draw, volume})
-  end
-
-  def draw(_id, _volume, _run_id), do: :ok
+  def draw(id, volume, run_id), do: call({run_id, id}, {:draw, volume})
 
   def on_hand(id, run_id), do: call({run_id, id}, :on_hand)
 
-  def notices(id, run_id), do: call({run_id, id}, :notices)
-
   def lost_m3(id, run_id), do: call({run_id, id}, :lost_m3)
-
-  def heard(id, run_id), do: call({run_id, id}, :heard)
 
   def open_run(id, run_id, burst, sustainable) do
     call({run_id, id}, {:open_run, burst, sustainable})
   end
 
   def rejoin(id, run_id), do: call({run_id, id}, :rejoin)
-
-  def ratio(id, run_id) do
-    case call({run_id, id}, :ratio) do
-      {:error, :absent} -> Problem.burst_utilization_ratio()
-      ratio -> ratio
-    end
-  end
 
   def floor_ratio(id, run_id) do
     case call({run_id, id}, :floor_ratio) do
@@ -104,6 +73,8 @@ defmodule GasolineSimulator.Refineries.Plant do
 
   @impl true
   def init(attrs) do
+    Seed.plant(Map.get(attrs, :seed), {:plant, Map.get(attrs, :seed_path), attrs.id})
+
     {:ok,
      %{
        id: attrs.id,
@@ -113,10 +84,8 @@ defmodule GasolineSimulator.Refineries.Plant do
        on_hand: 0.0,
        outgoing: [],
        expected: [],
-       notices: [],
        routes: %{},
        lost_m3: 0.0,
-       heard: nil,
        pace: nil,
        sustainable: nil
      }}
@@ -131,18 +100,12 @@ defmodule GasolineSimulator.Refineries.Plant do
     {:reply, :ok, %{state | pace: ramp_pace()}}
   end
 
-  def handle_call(:ratio, _from, state) do
-    {:reply, state.pace.ratio, state}
-  end
-
   def handle_call(:floor_ratio, _from, state) do
     ratio = if state.pace.phase == :ramping, do: state.pace.ratio, else: state.sustainable
     {:reply, ratio, state}
   end
 
   def handle_call({:hear, report}, _from, state) do
-    heard = Map.take(report, [:run_id, :deficit_m3, :planned_m3])
-
     pace =
       if report.deficit_m3 <= 1.0 and state.pace.phase == :ramping do
         climb_ramp(state.pace, state.sustainable)
@@ -150,15 +113,7 @@ defmodule GasolineSimulator.Refineries.Plant do
         state.pace
       end
 
-    {:reply, :ok, %{state | pace: pace, heard: heard}}
-  end
-
-  def handle_call(:heard, _from, state) do
-    {:reply, state.heard, state}
-  end
-
-  def handle_call({:hold, _volume}, _from, state) do
-    {:reply, :ok, state}
+    {:reply, :ok, %{state | pace: pace}}
   end
 
   def handle_call({:credit, volume}, _from, state) do
@@ -171,10 +126,6 @@ defmodule GasolineSimulator.Refineries.Plant do
 
   def handle_call(:on_hand, _from, state) do
     {:reply, {:ok, state.on_hand}, state}
-  end
-
-  def handle_call(:notices, _from, state) do
-    {:reply, state.notices, state}
   end
 
   def handle_call(:lost_m3, _from, state) do
@@ -215,38 +166,15 @@ defmodule GasolineSimulator.Refineries.Plant do
   end
 
   @impl true
-  def handle_info({:DOWN, _ref, :process, pid, reason}, state) do
-    {:noreply, signal(state, pid, reason)}
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
+    {:noreply, signal(state, pid)}
   end
 
-  defp signal(state, pid, :normal) do
+  defp signal(state, pid) do
     %{
       state
       | outgoing: Enum.reject(state.outgoing, &(&1.pid == pid)),
         expected: Enum.reject(state.expected, &(&1.pid == pid))
-    }
-  end
-
-  defp signal(state, pid, _reason) do
-    {sent, outgoing} = Enum.split_with(state.outgoing, &(&1.pid == pid))
-    {lost, expected} = Enum.split_with(state.expected, &(&1.pid == pid))
-
-    %{
-      state
-      | outgoing: outgoing,
-        expected: expected,
-        notices: Enum.map(sent ++ lost, &notice/1) ++ state.notices
-    }
-  end
-
-  defp notice(delivery) do
-    %{
-      kind: :lost,
-      delivery_id: delivery.id,
-      volume_m3: delivery.volume_m3,
-      origin_id: delivery.origin_id,
-      destination_id: delivery.destination_id,
-      run_id: delivery.run_id
     }
   end
 
@@ -278,10 +206,6 @@ defmodule GasolineSimulator.Refineries.Plant do
     |> Enum.uniq()
   end
 
-  defp deliver(state, volume, _day, _peers, _failure_pct, _closed_roads)
-       when volume <= 0.0,
-       do: {:ok, state}
-
   defp deliver(_state, _volume, _day, [], _failure_pct, _closed_roads), do: :unclaimed
 
   defp deliver(state, volume, day, [peer | rest], failure_pct, closed_roads) do
@@ -304,7 +228,12 @@ defmodule GasolineSimulator.Refineries.Plant do
           case cast({state.run, peer}, {:track, delivery}) do
             :ok ->
               Process.monitor(pid)
-              state = %{state | on_hand: state.on_hand - volume, outgoing: [delivery | state.outgoing]}
+
+              state = %{
+                state
+                | on_hand: state.on_hand - volume,
+                  outgoing: [delivery | state.outgoing]
+              }
 
               if cargo_lost?(failure_pct, state.id, peer) do
                 DeliverySupervisor.fail(state.deliveries, pid)
@@ -330,50 +259,8 @@ defmodule GasolineSimulator.Refineries.Plant do
   end
 
   defp route_pct(failure_pct, origin, destination) do
-    pair = Distances.pair(origin, destination)
-
-    raw =
-      cond do
-        Map.has_key?(failure_pct, pair) -> Map.fetch!(failure_pct, pair)
-        Map.has_key?(failure_pct, destination) -> Map.fetch!(failure_pct, destination)
-        true -> Map.get(failure_pct, to_string(destination), @default_failure_pct)
-      end
-
-    clamp_failure_pct(raw)
+    Map.fetch!(failure_pct, {origin, destination})
   end
-
-  defp failure_keys({origin, destination}) do
-    pair = Distances.pair(origin, destination)
-    [pair, Distances.pair_key(pair)]
-  end
-
-  defp failure_keys([origin, destination]), do: failure_keys({origin, destination})
-
-  defp failure_keys(key) when is_binary(key) do
-    case String.split(key, "|", parts: 2) do
-      [origin, destination] -> failure_keys({origin, destination})
-      _ -> [key]
-    end
-  end
-
-  defp failure_keys(key), do: [to_string(key)]
-
-  defp clamp_failure_pct(pct) when is_integer(pct) do
-    pct |> max(0) |> min(@failure_scale)
-  end
-
-  defp clamp_failure_pct(pct) when is_float(pct) do
-    pct |> round() |> clamp_failure_pct()
-  end
-
-  defp clamp_failure_pct(pct) when is_binary(pct) do
-    case Integer.parse(String.trim(pct)) do
-      {number, ""} -> clamp_failure_pct(number)
-      _ -> 0
-    end
-  end
-
-  defp clamp_failure_pct(_pct), do: 0
 
   defp route_paused?(state, destination, day) do
     case route_of(state, destination) do

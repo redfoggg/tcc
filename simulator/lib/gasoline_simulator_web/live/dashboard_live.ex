@@ -8,6 +8,7 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   alias GasolineSimulator.Scenarios.Study
 
   @visible_delivery_groups 5
+  @starting_failure_pct 1
 
   @impl true
   def mount(_params, _session, socket) do
@@ -22,7 +23,7 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         page_title: "Painel de alocação de gasolina A",
         historical: Historical.load(),
         demand_adjustment_pct: nil,
-        failure_pct: %{},
+        failure_pct: Map.new(Catalog.ids(), &{&1, @starting_failure_pct}),
         planned_run: nil,
         plants: Orchestrator.plant_statuses(),
         deliveries: Orchestrator.deliveries(),
@@ -36,11 +37,11 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   @impl true
   def handle_event("run_plan", params, socket) do
     demand_adjustment_pct = params |> Map.get("demand_adjustment_pct") |> parse_float_input()
-    failure_pct = params |> Map.get("failure_pct", %{}) |> Plant.failure_pct()
+    failure_pct = Map.new(params["failure_pct"], fn {id, pct} -> {id, parse_pct_input(pct)} end)
 
     controls = %{
       demand_adjustment_pct: demand_adjustment_pct,
-      failure_pct: failure_pct
+      failure_pct: route_failure_pct(failure_pct)
     }
 
     {:ok, planned_run} = Orchestrator.run_plan(controls)
@@ -68,8 +69,8 @@ defmodule GasolineSimulatorWeb.DashboardLive do
     {:noreply, assign(socket, deliveries_expanded: not socket.assigns.deliveries_expanded)}
   end
 
-  def handle_event("run_study", _params, socket) do
-    case Study.start() do
+  def handle_event("run_study", params, socket) do
+    case params |> Map.get("seed") |> parse_seed_input() |> Study.start() do
       {:ok, study} -> {:noreply, assign(socket, study: study)}
       {:error, :already_running} -> {:noreply, socket}
     end
@@ -95,12 +96,27 @@ defmodule GasolineSimulatorWeb.DashboardLive do
     {:noreply, assign(socket, study: study)}
   end
 
+  defp parse_seed_input(""), do: nil
+  defp parse_seed_input(value), do: String.to_integer(value)
+
   defp parse_float_input(nil), do: nil
   defp parse_float_input(""), do: nil
 
   defp parse_float_input(value) do
     {number, ""} = Float.parse(value)
     number
+  end
+
+  defp parse_pct_input(value) do
+    case Integer.parse(String.trim(value)) do
+      {number, ""} -> number |> max(0) |> min(100)
+      _ -> @starting_failure_pct
+    end
+  end
+
+  defp route_failure_pct(by_destination) do
+    ids = Catalog.ids()
+    for o <- ids, d <- ids, o != d, into: %{}, do: {{o, d}, by_destination[d]}
   end
 
   defp fmt(value, divisor \\ 1, places \\ 1) do
@@ -127,7 +143,7 @@ defmodule GasolineSimulatorWeb.DashboardLive do
   defp cubic_m3(nil), do: "n/d m³"
   defp cubic_m3(value), do: "#{fmt(value, 1, 0)} m³"
 
-  defp plant_stock_sum(plants), do: Enum.sum_by(plants, &(&1.stock_m3 || 0.0))
+  defp plant_stock_sum(plants), do: Enum.sum_by(plants, & &1.stock_m3)
 
   defp signed(value, formatter) when value > 0, do: "+#{formatter.(value)}"
   defp signed(value, formatter), do: formatter.(value)
@@ -224,7 +240,7 @@ defmodule GasolineSimulatorWeb.DashboardLive do
                   max="100"
                   name={"failure_pct[#{id}]"}
                   id={"dashboard-failure-#{id}"}
-                  value={Map.get(@failure_pct, id, Plant.default_failure_pct())}
+                  value={@failure_pct[id]}
                   class="input input-bordered w-full"
                 />
               </div>
@@ -237,18 +253,24 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         <section id="dashboard-study" class="rounded border p-4 space-y-3">
           <h2 class="font-semibold">Bateria metodológica</h2>
           <p class="text-sm opacity-70">
-            Dez cenários, dez execuções cada. O botão grava um CSV por
+            Nove cenários, dez execuções cada. O botão grava um CSV por
             execução em data/studies. As plantas deste painel permanecem
             como estão. Cada cenário traz a própria demanda. Toda remessa usa
             o tempo de caminhão de cada par. O ajuste de demanda e a
             porcentagem de falha do formulário não
             entram na bateria. Cada execução sorteia de 1% a 5% de falha em
-            cada rota, e todos os cenários usam as mesmas taxas da execução
-            de mesmo número da referência. A falha alta sorteia de 41% a
-            100%. O bloqueio sorteia com peso maior as rotas entre Sul ou
-            Sudeste e Norte ou Nordeste.
+            cada rota, e todos os cenários usam as mesmas taxas e os mesmos
+            rendimentos da execução de mesmo número da referência. A falha
+            alta sorteia de 41% a
+            100%. O bloqueio fecha duas das seis rotas de maior volume. A
+            mobilidade do FUT baixa o teto de 98% a 80%.
+            A semente fixa todos os sorteios. Em branco, a bateria sorteia uma
+            e a grava no manifesto. Repetir a semente reproduz a bateria.
           </p>
           <p id="dashboard-study-status" class="text-sm">{study_status(@study)}</p>
+          <p :if={@study.seed} id="dashboard-study-seed" class="text-sm font-mono">
+            Semente: {@study.seed}
+          </p>
           <p
             :if={@study.output_dir}
             id="dashboard-study-path"
@@ -256,13 +278,24 @@ defmodule GasolineSimulatorWeb.DashboardLive do
           >
             {@study.output_dir}
           </p>
-          <.button
-            id="dashboard-run-study"
-            phx-click="run_study"
-            disabled={@study.status == :running}
-          >
-            Rodar bateria
-          </.button>
+          <form phx-submit="run_study" id="dashboard-study-form" class="flex items-end gap-3">
+            <div>
+              <label for="dashboard-study-seed-input" class="text-sm font-medium">
+                Semente (opcional)
+              </label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                name="seed"
+                id="dashboard-study-seed-input"
+                class="input input-bordered"
+              />
+            </div>
+            <.button id="dashboard-run-study" disabled={@study.status == :running}>
+              Rodar bateria
+            </.button>
+          </form>
         </section>
       </div>
     </Layouts.app>
@@ -586,7 +619,11 @@ defmodule GasolineSimulatorWeb.DashboardLive do
             value={annual_volume(@annual.served_demand_m3)}
             unit="Mm³ no ano"
           />
-          <.metric label="Déficit" value={annual_volume(@annual.deficit_m3)} unit="Mm³ não cobertos no ano" />
+          <.metric
+            label="Déficit"
+            value={annual_volume(@annual.deficit_m3)}
+            unit="Mm³ não cobertos no ano"
+          />
           <.metric
             label="Chegadas"
             value={annual_volume(@annual.landed_m3)}

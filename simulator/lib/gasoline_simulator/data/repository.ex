@@ -29,11 +29,13 @@ defmodule GasolineSimulator.Data.Repository do
   def load_year(opts \\ []) do
     curated_dir = curated_dir(opts)
     monthly_demand = demand_by_month(curated_dir)
-    monthly_refineries = refineries_by_month(curated_dir)
+    national_average = national_average_yield(curated_dir)
+    monthly_refineries = refineries_by_month(curated_dir, national_average)
 
     %{
       demand_by_day: demand_by_day(monthly_demand),
-      refineries_by_day: refineries_by_day(monthly_refineries)
+      refineries_by_day: refineries_by_day(monthly_refineries),
+      national_average_yield: national_average
     }
   end
 
@@ -53,9 +55,8 @@ defmodule GasolineSimulator.Data.Repository do
     end)
   end
 
-  defp refineries_by_month(curated_dir) do
+  defp refineries_by_month(curated_dir, national_average) do
     monthly_yields = monthly_yields_by_id(curated_dir)
-    national_average = national_average_yield(curated_dir)
 
     curated_dir
     |> Path.join(@refinery_capacity_file)

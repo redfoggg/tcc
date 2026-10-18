@@ -8,7 +8,8 @@ defmodule GasolineSimulator.Refineries.Logistics do
         {:ok, arrived} ->
           region = Regions.of_plant(id)
 
-          {[id | present], volume + arrived, Map.update(by_region, region, arrived, &(&1 + arrived)),
+          {[id | present], volume + arrived,
+           Map.update(by_region, region, arrived, &(&1 + arrived)),
            Map.put(by_plant, id, arrived)}
 
         {:error, :absent} ->
@@ -23,7 +24,15 @@ defmodule GasolineSimulator.Refineries.Logistics do
   @convoy_m3 30.0
   @convoy_min_m3 20.0
 
-  def dispatch(result, day, present, run_id, failure_pct \\ %{}, closed_roads \\ MapSet.new(), landed_by_plant \\ %{}) do
+  def dispatch(
+        result,
+        day,
+        present,
+        run_id,
+        failure_pct,
+        closed_roads,
+        landed_by_plant
+      ) do
     shipped =
       result.refineries
       |> Enum.filter(&(&1.id in present))
@@ -37,10 +46,6 @@ defmodule GasolineSimulator.Refineries.Logistics do
     {result, shipped}
   end
 
-  defp place({_origin, volume, _destinations}, _day, _run_id, _failure_pct, _closed_roads)
-       when volume <= 0.0,
-       do: 0.0
-
   defp place({origin, volume, destinations}, day, run_id, failure_pct, closed_roads) do
     volume
     |> convoys()
@@ -50,9 +55,7 @@ defmodule GasolineSimulator.Refineries.Logistics do
   defp ship_convoy(origin, volume, destinations, day, run_id, failure_pct, closed_roads) do
     case Plant.ship(origin, volume, day, destinations, run_id, failure_pct, closed_roads) do
       {:ok, shipped} -> shipped
-      {:error, :absent} ->
-        Plant.hold(origin, volume, run_id)
-        0.0
+      {:error, :absent} -> 0.0
     end
   end
 
@@ -83,7 +86,9 @@ defmodule GasolineSimulator.Refineries.Logistics do
         demand = Regions.demand(demand_m3, region)
 
         cond do
-          plants == [] -> {supplies, needs}
+          plants == [] ->
+            {supplies, needs}
+
           refined < demand ->
             {supplies, needs ++ shares(plants, demand - refined, & &1.processing_capacity_m3)}
 
@@ -100,18 +105,12 @@ defmodule GasolineSimulator.Refineries.Logistics do
     match(supplies, needs, Enum.map(needs, &elem(&1, 0)), [])
   end
 
-  defp shares(_plants, volume, _weight) when volume <= 0.0, do: []
-
   defp shares(plants, volume, weight) do
     total = Enum.sum_by(plants, weight)
 
-    if total <= 0.0 do
-      []
-    else
-      plants
-      |> Enum.map(fn plant -> {plant.id, volume * weight.(plant) / total} end)
-      |> Enum.filter(fn {_id, part} -> part > 0.0 end)
-    end
+    plants
+    |> Enum.map(fn plant -> {plant.id, volume * weight.(plant) / total} end)
+    |> Enum.filter(fn {_id, part} -> part > 0.0 end)
   end
 
   defp match([{origin, slack} | supplies], [{destination, gap} | needs], order, acc) do

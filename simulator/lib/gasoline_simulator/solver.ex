@@ -24,9 +24,12 @@ defmodule GasolineSimulator.Solver do
           facilities: [facility_input()]
         }
 
+  @type facility_result :: %{id: String.t(), allocated: float()}
+
   @type error_kind :: :solver_failure | :solver_panic | :timeout
 
-  @spec solve(solver_input(), keyword()) :: {:ok, map()} | {:error, {error_kind(), String.t()}}
+  @spec solve(solver_input(), keyword()) ::
+          {:ok, [facility_result()]} | {:error, {error_kind(), String.t()}}
   def solve(input, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, @default_timeout_ms)
     task_supervisor = Keyword.get(opts, :task_supervisor, @default_task_supervisor)
