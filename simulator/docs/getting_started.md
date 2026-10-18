@@ -60,6 +60,7 @@ Nordeste, fica de fora porque não produz gasolina A.
 | `docs/data_transformations.md` | Conversões dos dados e as hipóteses e simplificações do modelo |
 | `docs/other_charges.md` | Outras cargas e a definição de FUT |
 | `docs/refinery_distances.md` | Coordenadas, distâncias e tempo de caminhão |
+| `docs/findings.md` | Conclusões que a bateria sustenta contra o Histórico 2025, e as que não sustenta |
 
 ## Pré-requisitos
 

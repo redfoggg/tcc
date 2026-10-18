@@ -273,8 +273,70 @@ de descanso, com no mínimo 1 dia.
 em 3 a 4 dias. As coordenadas de REAM, RECAP e RPCC vêm do OpenStreetMap
 porque a Wikipédia não as publica.
 
-**Por quê.** Uma regra única de transporte entre todas as refinarias.
+**Por quê.** A escolha é deliberada. O modelo deixa de fora os dutos e a
+cabotagem, e isso torna a logística mais difícil do que na realidade,
+porque o duto é mais eficiente que o caminhão. Uma regra única de
+transporte vale entre todas as refinarias.
 
-**Efeito.** Na prática, produto de Manaus costuma seguir de navio ou
-balsa. O prazo real da REAM pode ser outro. Detalhes em
-`docs/refinery_distances.md`.
+**Efeito.** Os resultados de cobertura são um limite inferior
+conservador. Se o sistema planejado cobre a demanda só com caminhões,
+tende a cobrir tão bem ou melhor com dutos e cabotagem. Os cenários de
+logística, `falha_alta_remessa` e `rotas_bloqueadas`, medem a
+sensibilidade de uma rede só de caminhões, e não da rede real. Com o
+duto como alternativa, bloquear uma estrada tenderia a pesar menos. Na
+prática, produto de Manaus costuma seguir de navio ou balsa, e o prazo
+real da REAM pode ser outro. Detalhes em `docs/refinery_distances.md`.
+
+### 12. O modelo não tem preço, custo nem importação
+
+**O quê.** O plano decide só quantidades físicas. Não há custo de
+refino, preço de combustível nem opção de importar. A parte da demanda
+que 2025 cobriu com importação e estoque fica fora do modelo.
+
+**Por quê.** O estudo pergunta o que o parque de refino instalado
+poderia produzir fisicamente. O argumento econômico vem de fora do
+modelo, no TCC. Antes das privatizações, a Petrobras refinava no Brasil
+toda a gasolina A. Depois das privatizações e do início da política de
+paridade de preços internacionais (PPI), o Brasil passou a importar
+gasolina A. O trabalho defende que o custo não justifica essas
+importações.
+
+**Efeito.** O modelo mostra se a capacidade existia, não se usá-la
+sairia mais barato. Afirmações sobre custo devem se apoiar nas fontes
+do trabalho, não nos resultados da simulação.
+
+### 13. A referência é produção planejada, não 2025 recalibrado
+
+**O quê.** No cenário `referencia`, as 12 plantas ficam no ar o ano
+inteiro, com planejamento central, sem paradas nem outros choques, e
+com o FUT entre o piso de 94% e o teto de 100%.
+
+**Por quê.** O cenário mede o potencial do parque instalado sob
+planejamento. O Histórico 2025 é o que aconteceu sob a dinâmica de
+mercado. A distância entre os dois é um resultado do estudo, não um
+erro de calibração.
+
+**Efeito.** Na bateria `20261018T043254Z`, a referência produz 33,60
+milhões de m³, contra 28,27 milhões em 2025, com FUT de 97,1% contra
+82,1%. Os itens 1 e 2, rendimento zero como média nacional e REAM com o
+rendimento nacional, seguem a mesma premissa.
+
+### 14. O plano é um problema de programação linear
+
+**O quê.** Cada dia é um problema de programação linear (LP), resolvido
+pelo HiGHS. Não há variável inteira. O solver não liga nem desliga
+planta. Quais plantas ficam no ar é decisão do cenário.
+
+**Por quê.** Uma versão anterior tinha uma variável binária de "planta
+ligada", fixada em 1 para toda planta no ar. Ela não mudava o valor
+ótimo, mas fazia o solver tratar o problema como programação linear
+inteira mista (MILP). Ela foi removida.
+
+**Efeito.** O valor ótimo é o mesmo. Em dias com déficit, várias
+alocações empatam no ótimo, e o LP pode desempatar de outro jeito que o
+MILP. Numa comparação da bateria inteira com a mesma semente, isso
+mudou pouco 16 das 90 execuções, no máximo 0,01 desvio padrão nas
+médias dos cenários, sem mudar nenhum marcador de significância. Se um
+dia o solver precisar decidir ligar ou desligar plantas, por exemplo
+com um custo fixo de operação, a variável binária volta a ser
+necessária.

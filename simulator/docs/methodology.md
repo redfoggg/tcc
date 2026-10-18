@@ -206,8 +206,120 @@ Para cada cenário, o resumo das execuções que terminaram traz:
 | Média e desvio padrão (dp) | Valor típico e quanto as execuções se afastam dele |
 | Coeficiente de variação (CV) | Desvio padrão dividido pela média. Compara a dispersão de medidas em escalas diferentes |
 | Mínimo e máximo | Melhor e pior execução |
-| IC 95% | Intervalo de confiança de 95% da média, pela distribuição t de Student com $n-1$ graus de liberdade, onde $n$ é o número de execuções |
-| Δ contra a referência | Média do cenário menos média da referência. A diferença é marcada quando o valor p do teste t de Welch, que compara médias com variâncias diferentes, fica abaixo de 0,05. O CSV traz também o valor p e o intervalo de 95% da diferença |
+| IC 95% | Intervalo de confiança de 95% da média, pela distribuição t de Student com $n-1$ graus de liberdade, onde $n$ é o número de execuções. Ver Como ler a estatística |
+| Δ contra a referência | Média do cenário menos média da referência. A diferença é marcada quando o valor p do teste t de Welch, que compara médias com variâncias diferentes, fica abaixo de 0,05. O CSV traz também o valor p e o intervalo de 95% da diferença. Ver Como ler a estatística |
+
+### Como ler a estatística
+
+**O problema.** Cada cenário roda 10 vezes, e cada execução dá um número
+diferente por causa dos sorteios. A média das 10 é uma estimativa, não o
+valor verdadeiro do cenário. Daí saem duas perguntas diferentes:
+
+| Pergunta | Ferramenta | No relatório |
+|---|---|---|
+| Quão precisa é a média? | Distribuição t de Student | Coluna IC 95% |
+| A diferença contra a referência é real ou sorte? | Teste t de Welch | Asterisco no Δ |
+
+**Ingredientes.** A média é a soma dividida por $n$. O desvio padrão
+mede quanto uma execução se afasta da média. Ele divide a soma dos
+quadrados por $n-1$, e não por $n$, porque os desvios são medidos contra
+a própria média da amostra, que fica mais perto dos dados do que a média
+verdadeira; dividir por $n$ subestimaria a dispersão. O erro padrão é a
+incerteza da média, e não de uma execução:
+
+$$\text{ep} = \frac{\text{dp}}{\sqrt{n}}$$
+
+Com 10 execuções, o erro padrão é cerca de um terço do desvio padrão. A
+média de 10 execuções varia menos do que uma execução sozinha.
+
+**Distribuição t de Student e IC 95%.** Se o desvio padrão verdadeiro
+fosse conhecido, bastaria a curva normal, com multiplicador 1,96. Mas
+ele também é estimado com só 10 execuções, e pode sair menor do que o
+real. A curva t de Student cobre esse risco: tem caudas mais pesadas e
+alarga o intervalo. O tamanho do alargamento depende dos graus de
+liberdade, $n-1 = 9$ aqui. Multiplicador para 95%:
+
+| Execuções | Graus de liberdade | Multiplicador $t$ |
+|---|---|---|
+| 5 | 4 | 2,78 |
+| 10 | 9 | 2,262 |
+| 30 | 29 | 2,05 |
+| infinitas | infinitos | 1,96 |
+
+$$\text{IC} = \text{média} \pm t \times \text{ep}$$
+
+Leitura: se a bateria fosse repetida 100 vezes com sementes novas, cerca
+de 95 dos intervalos calculados conteriam a média verdadeira do cenário.
+O intervalo não sabe que a cobertura não passa de 100%. Um limite acima
+de 100 se lê como 100.
+
+Exemplo com a cobertura efetiva da referência na bateria
+`data/studies/20261018T043254Z`:
+
+| Passo | Valor |
+|---|---|
+| Média de 10 execuções | 99,367% |
+| dp | 0,099 p.p. |
+| ep $= 0{,}099 / \sqrt{10}$ | 0,031 p.p. |
+| $t$ com 9 graus de liberdade | 2,262 |
+| Meia largura $= 2{,}262 \times 0{,}031$ | 0,071 p.p. |
+| IC 95% | 99,30% a 99,44% |
+
+É o mesmo intervalo da coluna "IC 95% da efetiva" do `report.md`.
+
+**Teste t de Welch e o asterisco.** O teste mede a diferença das médias
+em unidades de erro padrão. Os erros padrão dos dois grupos se somam em
+quadrado:
+
+$$\text{ep}_\text{dif} = \sqrt{\text{ep}_1^2 + \text{ep}_2^2} \qquad t = \frac{\text{diferença}}{\text{ep}_\text{dif}}$$
+
+Os graus de liberdade saem da fórmula de Welch–Satterthwaite:
+
+$$\text{gl} = \frac{(\text{ep}_1^2 + \text{ep}_2^2)^2}{\dfrac{\text{ep}_1^4}{n_1 - 1} + \dfrac{\text{ep}_2^4}{n_2 - 1}}$$
+
+Com dois grupos de 10 que variam igual, ela dá 18. Quando um grupo varia
+muito mais do que o outro, ela cai para perto de 9, porque quase toda a
+incerteza vem de um grupo só. Menos graus de liberdade tornam o teste
+mais exigente.
+
+O valor p é a chance de ver uma diferença deste tamanho, ou maior, se o
+cenário não mudasse nada. Abaixo de 0,05, a diferença ganha o asterisco.
+
+Por que Welch e não o teste t de Student clássico: o clássico supõe que
+os dois grupos variam igual. Aqui isso é falso. Na cobertura efetiva, o
+dp de paradas_produtivas é 1,35 p.p., e o da referência é 0,10 p.p.
+
+Exemplo, cobertura efetiva de paradas_produtivas contra a referência:
+
+| Passo | Valor |
+|---|---|
+| Média de paradas_produtivas | 93,268% (dp 1,346, ep 0,426) |
+| Média da referência | 99,367% (dp 0,099, ep 0,031) |
+| Diferença | -6,10 p.p. |
+| ep da diferença $= \sqrt{0{,}426^2 + 0{,}031^2}$ | 0,427 p.p. |
+| $t = -6{,}10 / 0{,}427$ | -14,3 |
+| Graus de liberdade | 9,1 |
+| Valor p | $1{,}5 \times 10^{-7}$ |
+
+A diferença é 14 erros padrão, e o relatório mostra -6,10 *.
+
+**Cuidados.**
+
+- Significativo não quer dizer importante. O asterisco diz que a
+  diferença não é sorte, não que ela é grande. Leia sempre o tamanho do
+  Δ junto com o asterisco.
+- `scenario_vs_reference.csv` faz 104 testes (8 cenários × 13
+  medidas), sem correção para comparações múltiplas. A tabela do
+  `report.md` mostra só 5 medidas por cenário, mas os outros testes
+  existem. Com 5% de chance de erro em cada um, mesmo que nenhum cenário
+  mudasse nada, uns 5 dos 104 sairiam com asterisco por acaso.
+  Resultados com p perto de 0,05 pedem cautela. Efeitos grandes, como o
+  do exemplo, não são afetados.
+- O teste trata as execuções como independentes. Mas a execução $n$ de
+  cada cenário usa os mesmos rendimentos e taxas de falha da execução
+  $n$ da referência. Esse pareamento reduz o ruído real da diferença, e
+  o teste não aproveita isso. Ele fica conservador: pode deixar de marcar
+  uma diferença pequena, mas não invalida os asteriscos que já estão lá.
 
 O relatório tem estas seções:
 
