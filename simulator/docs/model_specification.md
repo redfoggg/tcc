@@ -164,10 +164,22 @@ Dados que o plano recebe, em m³ de gasolina:
 | $U_{d-1}$ | Déficit realizado ontem, definido em Execução do dia |
 | $V_d$ | Reserva: estoque que o plano quer ter no fim do dia, definida em Previsão do ano |
 
-Função objetivo:
+O solver recebe os dados do dia como valores fixos: demanda, chegadas,
+estoques, reserva, rendimento planejado e os limites de processamento de cada
+refinaria. Com esses dados, calcula quanto cada refinaria deve processar
+($P_{i,d}$). As variáveis de falta ($u_{r,d}$ e $u_d$) e sobra
+($E_{r,d}$ e $E_d$) completam os balanços regional e nacional.
+
+O solver calcula esses valores para minimizar a função objetivo abaixo,
+respeitando todas as restrições. O $\min$ se aplica à soma inteira entre
+parênteses; o índice $P,u,E$ indica as variáveis cujos valores são calculados:
 
 $$
-\min \ \sum_r u_{r,d} + u_d + 10^{-4}\left(\sum_r E_{r,d} + E_d\right) + 10^{-4} \sum_{i \in F_d,\ C_{i,d} > 0} \frac{P_{i,d}}{C_{i,d}}
+\min_{P,u,E} \left(
+\sum_r u_{r,d} + u_d
++ 10^{-4}\left(\sum_r E_{r,d} + E_d\right)
++ 10^{-4} \sum_{i \in F_d,\ C_{i,d} > 0} \frac{P_{i,d}}{C_{i,d}}
+\right)
 $$
 
 - Cada m³ de falta, regional ou nacional, custa 1. É o termo que manda.
@@ -177,6 +189,22 @@ $$
   $10^{-4}$. Sem falta para cobrir, ele deixa a planta no piso. Entre
   duas plantas, sobe primeiro a de teto maior, porque cada m³ dela pesa
   menos nesse termo.
+
+Por exemplo, considere duas refinarias A e B com tetos de 100 e 200 m³
+de petróleo, respectivamente, pisos iguais a zero e uma necessidade de
+processamento de 150 m³. Estas três alocações produzem o mesmo total:
+
+| Petróleo em A (m³) | Petróleo em B (m³) | Total (m³) | Soma das frações de utilização |
+|---|---|---|---|
+| 100 | 50 | 150 | $100/100 + 50/200 = 1{,}25$ |
+| 50 | 100 | 150 | $50/100 + 100/200 = 1{,}00$ |
+| 0 | 150 | 150 | $0/100 + 150/200 = 0{,}75$ |
+
+Se as três alocações respeitarem as demais restrições e tiverem os mesmos
+custos de falta e sobra, o solver prefere a terceira: ela tem o menor
+termo de utilização, $10^{-4} \times 0{,}75$. É nesse sentido que o solver
+“escolhe” os valores: calcula uma solução com o menor custo total permitido
+pelas restrições.
 
 Restrições:
 
