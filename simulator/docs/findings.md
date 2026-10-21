@@ -5,22 +5,14 @@ dados do estudo sustentam e quais não sustentam. Não é o texto do TCC
 (trabalho de conclusão de curso). Ele guarda as linhas de argumento e a
 evidência de cada uma, para o autor escrever as conclusões no TCC.
 
-**Números desatualizados.** Os números abaixo vêm da bateria
-`20261018T043254Z`, semente `612777692`, feita com 12 refinarias. Essa
-bateria foi apagada quando a RNEST saiu do catálogo
-(`docs/data_transformations.md`, Escopo), e as tabelas precisam ser
-refeitas com a próxima bateria. As linhas de argumento continuam
-valendo. Os números mudam: sem a RNEST, o Histórico 2025 do escopo tem
-28,25 Mm³ e FUT de 82,84%, a referência produz menos, e o Nordeste
-deixa de ter a produção que a RNEST tinha no modelo. O plano também
-passou a usar a previsão do ano (`docs/data_transformations.md`, item
-15), o que sobe a cobertura de todos os cenários com folga de teto.
-
-Rodar a bateria de novo com a mesma semente reproduz os números. Com
-outra semente, eles mudam um pouco. A ordem de grandeza dessa mudança
-é a largura do IC 95% (intervalo de confiança de 95% da média), perto
-de 0,1 a 0,3 p.p. (pontos percentuais) na cobertura efetiva da
-referência. Mm³ são milhões de m³.
+Todos os números vêm da bateria `data/studies/20261021T045244Z`, com
+semente `865221133`, 11 refinarias e o plano com a previsão do ano.
+Eles estão em `analysis/report.md` e nos CSVs de `analysis/`. Rodar a
+bateria de novo com a mesma semente reproduz os números. Com outra
+semente, eles mudam um pouco. A ordem de grandeza dessa mudança é a
+largura do IC 95% (intervalo de confiança de 95% da média): na
+referência, a cobertura efetiva fica entre 98,47% e 99,28%, uma faixa
+de 0,81 p.p. (pontos percentuais). Mm³ são milhões de m³.
 
 ## Premissas que enquadram a leitura
 
@@ -50,25 +42,29 @@ simplificações, itens 11 a 15. As que mais pesam na comparação:
 
 ### 1. Capacidade e utilização
 
-O parque tinha capacidade para atender a demanda de 2025. Com as
-plantas disponíveis e o FUT entre 94% e 100%, a referência produz mais
-do que a demanda. Em 2025, a produção ficou 5,17 Mm³ abaixo dela.
+O parque tinha capacidade para atender a demanda de 2025, no limite.
+Com as 11 plantas disponíveis, o FUT entre 94% e 100% e o estoque
+formado antes de dezembro, a referência produz praticamente a demanda:
+o saldo do ano é −0,16 Mm³, com desvio padrão de 0,13 Mm³, então não dá
+para dizer que sobra nem que falta. Em 2025, a produção do mesmo escopo
+ficou 5,19 Mm³ abaixo da demanda.
 
 | Indicador | Histórico 2025 | Referência |
 |---|---|---|
-| Produção (Mm³) | 28,27 | 33,60 ± 0,06 |
+| Produção (Mm³) | 28,25 | 33,28 ± 0,13 |
 | Demanda (Mm³) | 33,44 | 33,44 |
-| Saldo (Mm³) | −5,17 | +0,15 ± 0,06 |
-| FUT (%) | 82,1 | 97,1 ± 0,0 |
+| Saldo (Mm³) | −5,19 | −0,16 ± 0,13 |
+| FUT (%) | 82,8 | 98,3 ± 0,4 |
+| Cobertura efetiva (%) | 75,77 a 84,47 | 98,87 ± 0,57 |
 
 Frase de exemplo: "Com as refinarias disponíveis o ano inteiro e
-operando entre 94% e 100% da capacidade, o parque produziria 33,60 Mm³
-de gasolina A, acima da demanda de 33,44 Mm³, contra 28,27 Mm³
-efetivamente produzidos em 2025."
+operando entre 94% e 100% da capacidade, o parque produziria 33,28 Mm³
+de gasolina A, praticamente a demanda de 33,44 Mm³, contra 28,25 Mm³
+efetivamente produzidos em 2025 pelas mesmas refinarias."
 
-### 2. O FUT histórico explica quase toda a diferença
+### 2. O FUT histórico explica a maior parte da diferença
 
-Quando o modelo trava o teto de FUT em 82%, perto dos 82,1% de 2025, a
+Quando o modelo trava o teto de FUT em 82%, perto dos 82,8% de 2025, a
 produção e a cobertura caem para perto dos valores históricos. A
 execução de teto 82% do cenário `mobilidade_fut` usa os mesmos
 rendimentos e taxas de falha da execução de mesmo número da
@@ -76,67 +72,77 @@ referência.
 
 | Indicador | Histórico 2025 | Modelo com teto de 82% |
 |---|---|---|
-| Produção (Mm³) | 28,27 | 28,41 |
-| Cobertura efetiva (%) | 75,84 a 84,54 | 84,79 |
+| Produção (Mm³) | 28,25 | 27,78 |
+| Cobertura efetiva (%) | 75,77 a 84,47 | 82,86 |
 
-A produção do modelo fica 0,14 Mm³ acima da histórica, cerca de 0,5%.
-A cobertura efetiva fica 0,25 p.p. acima da cobertura nacional
-histórica de 84,54%, que é o maior valor possível da efetiva em 2025.
+A produção do modelo fica 0,47 Mm³ abaixo da histórica, cerca de 1,7%.
+A cobertura efetiva fica dentro do intervalo histórico.
 
-Isso funciona também como validação do modelo: com a utilização de
-2025, ele reproduz o volume de 2025. A ressalva é que o modelo trava
-todas as plantas no mesmo teto, e em 2025 algumas pararam e outras
-rodaram alto. O total bate, mas a divisão por refinaria não.
+Isso funciona como validação do modelo: com a utilização de 2025, ele
+chega perto do volume de 2025. A ressalva é que o modelo trava todas as
+plantas no mesmo teto, e em 2025 algumas pararam e outras rodaram alto.
+REPAR e RECAP rodaram a 94,7% e 91,6% em 2025 e têm os maiores
+rendimentos do parque (0,344 e 0,358, contra 0,267 de média). Travá-las
+em 82% tira gasolina que o histórico teve. Já a REAM quase não refinou
+em 2025 (3,9%), e no modelo ela roda a 82%. O total fica próximo, mas a
+divisão por refinaria não bate.
+
+Uma bateria anterior, com a RNEST no catálogo, dava 28,41 Mm³ com teto
+de 82%, mais perto do histórico. Parte dessa proximidade vinha da
+RNEST, que no modelo rodava com o rendimento médio do país, que ela
+nunca teve. A comparação atual é mais honesta.
 
 Frase de exemplo: "Ao limitar a utilização do parque a 82%, valor
-observado em 2025, o modelo produz 28,41 Mm³, a 0,5% da produção real,
-o que indica que a diferença entre o potencial e o realizado se explica
-quase toda pela utilização."
+próximo ao observado em 2025, o modelo produz 27,78 Mm³, a 1,7% da
+produção real das mesmas refinarias, o que indica que a diferença entre
+o potencial e o realizado se explica em sua maior parte pela
+utilização."
 
 ### 3. Valor marginal do FUT
 
-Cada ponto de teto entre 80% e 94% acrescenta cerca de 0,36 Mm³ de
-produção: (32,59 − 27,61) / 14. Acima de 94%, o ganho cai, porque o
-FUT anual fica abaixo do teto: com teto de 98%, o FUT do ano é 96,2%.
-De 94% para 98%, a produção sobe 0,73 Mm³, cerca de 0,18 Mm³ por ponto.
+Cada ponto de teto entre 80% e 94% acrescenta cerca de 0,34 Mm³ de
+produção: (31,82 − 27,02) / 14. De 94% para 98%, a produção sobe 1,36
+Mm³, também cerca de 0,34 Mm³ por ponto. Com teto de 98%, o FUT do ano
+fica em 97,7%, porque o plano só sobe acima do piso quando a previsão
+pede estoque.
 
 | Teto (%) | FUT anual (%) | Produção (Mm³) | Cobertura efetiva (%) |
 |---|---|---|---|
-| 80 | 80,0 | 27,61 | 82,37 |
-| 82 | 82,0 | 28,41 | 84,79 |
-| 86 | 86,0 | 29,89 | 89,09 |
-| 90 | 90,0 | 31,31 | 93,32 |
-| 94 | 94,0 | 32,59 | 97,06 |
-| 96 | 95,1 | 33,03 | 98,18 |
-| 98 | 96,2 | 33,32 | 99,10 |
+| 80 | 80,0 | 27,02 | 80,68 |
+| 82 | 82,0 | 27,78 | 82,86 |
+| 86 | 86,0 | 29,30 | 87,29 |
+| 90 | 90,0 | 30,53 | 90,97 |
+| 94 | 94,0 | 31,82 | 94,59 |
+| 96 | 96,0 | 32,62 | 97,03 |
+| 98 | 97,7 | 33,18 | 98,31 |
 
 A tabela completa, com os dez tetos, está em
 `analysis/scenario_ceiling.csv`. Cada linha é uma única execução, então
 não tem IC.
 
-Frase de exemplo: "Entre 80% e 94% de utilização, cada ponto percentual
-equivale a cerca de 0,36 Mm³ de gasolina A por ano."
+Frase de exemplo: "Entre 80% e 98% de utilização, cada ponto percentual
+equivale a cerca de 0,34 Mm³ de gasolina A por ano."
 
 ### 4. Dependência regional
 
 Norte e Nordeste dependem de outras regiões. A autossuficiência é a
 produção das refinarias da região dividida pela demanda dela. Na
-referência, ela sobe, mas continua abaixo de 100%, e é a chegada de
+referência, ela sobe, mas continua bem abaixo de 100%, e é a chegada de
 comboios que leva a cobertura efetiva para perto de 100%.
 
 | Região | Autossuficiência histórica (%) | Autossuficiência na referência (%) | Cobertura efetiva na referência (%) |
 |---|---|---|---|
-| Norte | 11,9 | 23,5 ± 0,1 | 97,3 ± 2,0 |
-| Nordeste | 38,2 | 69,5 ± 0,3 | 98,5 ± 0,8 |
+| Norte | 11,9 | 24,0 ± 0,2 | 96,9 ± 2,5 |
+| Nordeste | 37,9 | 60,7 ± 0,4 | 96,9 ± 2,7 |
 
 No cenário `falha_alta_remessa`, a taxa de falha de cada rota fica
 entre 41% e 100%. Quase nada chega, e a cobertura efetiva de cada
-região fica igual à autossuficiência dela.
+região fica perto da autossuficiência dela.
 
 | Região | Autossuficiência (%) | Cobertura efetiva (%) |
 |---|---|---|
 | Norte | 24,8 ± 0,0 | 24,9 ± 0,1 |
-| Nordeste | 69,5 ± 0,3 | 69,6 ± 0,3 |
+| Nordeste | 60,7 ± 0,4 | 60,8 ± 0,5 |
 
 Como a logística do modelo é só por caminhão, mais difícil que a real,
 a cobertura alta da referência é um limite inferior do que o
@@ -148,40 +154,45 @@ cobertura delas depende do transporte vindo do Sul e do Sudeste."
 
 ### 5. Robustez do planejamento
 
-A cobertura efetiva de cada cenário de choque, comparada com a
-cobertura nacional histórica de 84,54%, que é o maior valor possível da
-efetiva em 2025.
+A cobertura efetiva de cada cenário de choque, comparada com o
+intervalo histórico de 75,77% a 84,47%. O maior valor, 84,47%, é a
+cobertura nacional de 2025 e o maior valor possível da efetiva.
 
 | Cenário | Cobertura efetiva (%) | IC 95% |
 |---|---|---|
-| rendimento_minimo | 83,23 ± 0,07 | 83,18 a 83,28 |
-| falha_alta_remessa | 85,41 ± 0,09 | 85,34 a 85,47 |
-| choque_demanda | 89,82 ± 0,16 | 89,70 a 89,94 |
-| manutencao_escalonada | 91,36 ± 0,49 | 91,01 a 91,71 |
-| paradas_produtivas | 93,27 ± 1,35 | 92,31 a 94,23 |
-| demanda_mensal | 94,30 ± 0,90 | 93,66 a 94,95 |
-| rotas_bloqueadas | 99,27 ± 0,28 | 99,07 a 99,47 |
+| falha_alta_remessa | 83,02 ± 0,12 | 82,93 a 83,10 |
+| rendimento_minimo | 83,21 ± 0,07 | 83,16 a 83,26 |
+| choque_demanda | 88,02 ± 0,21 | 87,87 a 88,17 |
+| manutencao_escalonada | 90,92 ± 0,66 | 90,45 a 91,39 |
+| paradas_produtivas | 92,69 ± 0,74 | 92,16 a 93,22 |
+| demanda_mensal | 93,87 ± 1,35 | 92,90 a 94,84 |
+| rotas_bloqueadas | 98,23 ± 0,66 | 97,75 a 98,70 |
 
-Só `rendimento_minimo` fica abaixo de 84,54%, e mesmo assim dentro do
-intervalo histórico de 75,84% a 84,54%. Ele fixa em todos os dias o
-menor rendimento mensal de cada refinaria. `falha_alta_remessa` fica
-0,87 p.p. acima. Os outros choques ficam bem acima. O
-`mobilidade_fut` fica fora desta tabela porque a média dele mistura
-tetos diferentes (linha 3).
+Dois cenários ficam abaixo de 84,47%, dentro do intervalo histórico:
+`falha_alta_remessa`, em que quase nenhum comboio chega, e
+`rendimento_minimo`, que fixa em todos os dias o menor rendimento
+mensal de cada refinaria. Os outros choques ficam acima do maior valor
+possível de 2025. O `mobilidade_fut` fica fora desta tabela porque a
+média dele mistura tetos diferentes (linha 3).
+
+`rotas_bloqueadas` tira 0,64 p.p. da cobertura efetiva, com asterisco
+(p = 0,03). O efeito é pequeno no ano porque o bloqueio dura 2 meses e
+o comboio segue para o próximo destino, mas existe.
 
 Frase de exemplo: "Mesmo sob choques de demanda, paradas de refinarias
-e falhas de transporte, o parque planejado atende uma parcela da
-demanda igual ou maior que a atendida em 2025, com exceção do cenário
-em que todas as refinarias rendem o mínimo do ano."
+e bloqueio de rotas, o parque planejado atende uma parcela da demanda
+maior que a atendida em 2025. Só ficam no nível histórico os cenários
+em que o transporte quase para ou todas as refinarias rendem o mínimo
+do ano."
 
 ### 6. Argumento combinado com o contexto do TCC
 
 O modelo mostra que a capacidade física existia: o parque podia
-produzir a gasolina A de 2025 (linhas 1 e 2). O porquê de não ter
-produzido vem de fora do modelo. O TCC traz o contexto: antes das
-privatizações, a Petrobras refinava toda a gasolina A no Brasil, e
-depois das privatizações e do início da PPI (paridade de preços
-internacionais) o país passou a importar gasolina A.
+produzir praticamente toda a gasolina A de 2025 (linhas 1 e 2). O
+porquê de não ter produzido vem de fora do modelo. O TCC traz o
+contexto: antes das privatizações, a Petrobras refinava toda a gasolina
+A no Brasil, e depois das privatizações e do início da PPI (paridade
+de preços internacionais) o país passou a importar gasolina A.
 
 Os dois lados têm fontes diferentes. O "podia" vem da simulação. O
 "por que não fez", e qualquer afirmação sobre custo ou preço, tem que
@@ -189,24 +200,25 @@ se apoiar nas fontes do autor, não nos resultados da simulação, que
 não tem preço nem custo.
 
 Frase de exemplo: "A simulação indica que o parque nacional tinha
-capacidade física para atender a demanda de 2025. A diferença entre essa
-capacidade e a produção observada coincide com o período posterior à
-adoção da PPI, quando a importação passou a cobrir parte da demanda
-(fonte)."
+capacidade física para atender praticamente toda a demanda de 2025. A
+diferença entre essa capacidade e a produção observada coincide com o
+período posterior à adoção da PPI, quando a importação passou a cobrir
+parte da demanda (fonte)."
 
 ## O que os dados não sustentam
 
 - **Decisão econômica ou custo.** O modelo não tem preço, custo nem
   importação. Ele não diz se produzir era mais barato que importar.
-- **A cobertura efetiva exata de 2025.** Ela é o intervalo de 75,84% a
-  84,54%, porque não há dado de transporte entre regiões. Compare os
+- **Que o parque sobraria.** O saldo da referência, −0,16 ± 0,13 Mm³,
+  fica no limite. A afirmação segura é que o parque chegaria
+  praticamente à demanda, não que a superaria.
+- **A cobertura efetiva exata de 2025.** Ela é o intervalo de 75,77% a
+  84,47%, porque não há dado de transporte entre regiões. Compare os
   cenários com o intervalo, não com um ponto dele.
-- **Efeito de `rotas_bloqueadas`.** Nesta bateria, a cobertura efetiva
-  cai 0,09 p.p., sem asterisco (p = 0,34). Numa bateria de teste com
-  outra semente, caiu 0,28 p.p., com asterisco. O efeito está no nível
-  do ruído.
 - **A média anual de `mobilidade_fut`.** Ela mistura dez tetos
   diferentes. Use a tabela por teto (linha 3).
+- **A divisão da produção por refinaria em 2025.** O teto uniforme
+  reproduz o total, não quem produziu quanto (linha 2).
 - **A rede logística real.** Os cenários logísticos medem a rede só de
   caminhões. Com dutos e cabotagem, bloquear uma rodovia tenderia a
   pesar menos, e falhas de comboio também.
@@ -218,7 +230,7 @@ estatística.
 
 - **Significativo não é importante.** O asterisco diz que a diferença
   provavelmente não é ruído, não que ela é grande. Cite sempre o Δ ao
-  lado do asterisco.
+  lado do asterisco. O −0,64 p.p. de `rotas_bloqueadas` é um exemplo.
 - **Muitos testes sem correção.** `analysis/scenario_vs_reference.csv`
   tem 104 testes (8 cenários × 13 medidas), e o `report.md` mostra só 5
   medidas por cenário. Todos usam o limite de 5% sem correção para
