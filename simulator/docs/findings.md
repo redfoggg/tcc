@@ -87,11 +87,6 @@ em 82% tira gasolina que o histórico teve. Já a REAM quase não refinou
 em 2025 (3,9%), e no modelo ela roda a 82%. O total fica próximo, mas a
 divisão por refinaria não bate.
 
-Uma bateria anterior, com a RNEST no catálogo, dava 28,41 Mm³ com teto
-de 82%, mais perto do histórico. Parte dessa proximidade vinha da
-RNEST, que no modelo rodava com o rendimento médio do país, que ela
-nunca teve. A comparação atual é mais honesta.
-
 Frase de exemplo: "Ao limitar a utilização do parque a 82%, valor
 próximo ao observado em 2025, o modelo produz 27,78 Mm³, a 1,7% da
 produção real das mesmas refinarias, o que indica que a diferença entre

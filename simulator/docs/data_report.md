@@ -54,9 +54,7 @@ As colunas `*_provenance` registram a categoria de cada valor.
 
 A LUBNOR, refinaria de lubrificantes e asfalto do Nordeste, não entra no
 catálogo nem nos CSVs curados. Em 2025 a ANP registra 0 m³ de gasolina A
-nela. A RNEST também não entra, por ser uma refinaria de diesel
-(`docs/data_transformations.md`, Escopo). Os brutos em `data/original/`
-ainda listam as duas, e o `Repository`
+nela. Os brutos em `data/original/` ainda a listam, e o `Repository`
 ignora qualquer código fora do catálogo.
 
 `logistics_data.csv` e `logistics_data_only_gasoline_2025.csv` são preço

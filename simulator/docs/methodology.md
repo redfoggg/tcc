@@ -21,10 +21,7 @@ Ficam fixos:
 
 - O calendário de 2025, a demanda curada e a capacidade curada.
 - As 11 refinarias do catálogo. A LUBNOR, refinaria de lubrificantes do
-  Nordeste, fica de fora porque não produz gasolina A. A RNEST também
-  fica de fora: é uma refinaria de diesel, e o rendimento de gasolina A
-  dela nunca passou de 4% num ano (`docs/data_transformations.md`,
-  Escopo).
+  Nordeste, fica de fora porque não produz gasolina A.
 - A divisão da demanda entre Norte, Nordeste, Sudeste e Sul pela
   população do Censo 2022 do IBGE (Instituto Brasileiro de Geografia e
   Estatística), com o Centro-Oeste somado ao Sudeste.
@@ -267,17 +264,17 @@ de 95 dos intervalos calculados conteriam a média verdadeira do cenário.
 O intervalo não sabe que a cobertura não passa de 100%. Um limite acima
 de 100 se lê como 100.
 
-Exemplo com a cobertura efetiva da referência na bateria de semente
-`612777692`, com as 11 refinarias:
+Exemplo com a cobertura efetiva da referência na bateria
+`data/studies/20261021T045244Z`:
 
 | Passo | Valor |
 |---|---|
-| Média de 10 execuções | 98,037% |
-| dp | 0,182 p.p. |
-| ep $= 0{,}182 / \sqrt{10}$ | 0,058 p.p. |
+| Média de 10 execuções | 98,872% |
+| dp | 0,565 p.p. |
+| ep $= 0{,}565 / \sqrt{10}$ | 0,179 p.p. |
 | $t$ com 9 graus de liberdade | 2,262 |
-| Meia largura $= 2{,}262 \times 0{,}058$ | 0,13 p.p. |
-| IC 95% | 97,91% a 98,17% |
+| Meia largura $= 2{,}262 \times 0{,}179$ | 0,40 p.p. |
+| IC 95% | 98,47% a 99,28% |
 
 É o mesmo intervalo da coluna "IC 95% da efetiva" do `report.md`.
 
@@ -301,21 +298,21 @@ cenário não mudasse nada. Abaixo de 0,05, a diferença ganha o asterisco.
 
 Por que Welch e não o teste t de Student clássico: o clássico supõe que
 os dois grupos variam igual. Aqui isso é falso. Na cobertura efetiva, o
-dp de paradas_produtivas é 1,18 p.p., e o da referência é 0,18 p.p.
+dp de demanda_mensal é 1,35 p.p., e o da referência é 0,57 p.p.
 
-Exemplo, cobertura efetiva de paradas_produtivas contra a referência:
+Exemplo, cobertura efetiva de demanda_mensal contra a referência:
 
 | Passo | Valor |
 |---|---|
-| Média de paradas_produtivas | 91,266% (dp 1,180, ep 0,373) |
-| Média da referência | 98,037% (dp 0,182, ep 0,058) |
-| Diferença | -6,77 p.p. |
-| ep da diferença $= \sqrt{0{,}373^2 + 0{,}058^2}$ | 0,378 p.p. |
-| $t = -6{,}77 / 0{,}378$ | -17,9 |
-| Graus de liberdade | 9,4 |
-| Valor p | $1{,}3 \times 10^{-8}$ |
+| Média de demanda_mensal | 93,869% (dp 1,351, ep 0,427) |
+| Média da referência | 98,872% (dp 0,565, ep 0,179) |
+| Diferença | -5,00 p.p. |
+| ep da diferença $= \sqrt{0{,}427^2 + 0{,}179^2}$ | 0,463 p.p. |
+| $t = -5{,}00 / 0{,}463$ | -10,8 |
+| Graus de liberdade | 12,1 |
+| Valor p | $1{,}5 \times 10^{-7}$ |
 
-A diferença é 18 erros padrão, e o relatório mostra -6,77 *.
+A diferença é 11 erros padrão, e o relatório mostra -5,00 *.
 
 **Cuidados.**
 

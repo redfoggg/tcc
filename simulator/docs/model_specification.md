@@ -36,8 +36,7 @@ IBGE é o Instituto Brasileiro de Geografia e Estatística. O Sudeste soma
 que não tem refinaria no catálogo. O total é 203.080.756. Os nomes de
 cada sigla de refinaria estão em `docs/refinery_distances.md`. A LUBNOR,
 refinaria de lubrificantes do Nordeste, fica de fora porque não produz
-gasolina A. A RNEST fica de fora porque é uma refinaria de diesel
-(`docs/data_transformations.md`, Escopo).
+gasolina A.
 
 No Planejado, $F_d = F$ em todos os dias, salvo planta derrubada no
 painel. A hipótese é que as paradas do histórico, como a de manutenção

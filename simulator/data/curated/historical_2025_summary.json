@@ -15,7 +15,7 @@
       "RPBC",
       "RPCC"
     ],
-    "description": "Refineries in GasolineSimulator.Data.Catalog. LUBNOR is excluded: it is a lube and asphalt plant and does not produce gasoline A. RNEST is excluded: it is a diesel-oriented plant whose gasoline A yield never exceeded 4% in a year since it started operating."
+    "description": "Refineries in GasolineSimulator.Data.Catalog. LUBNOR is excluded: it is a lube and asphalt plant and does not produce gasoline A."
   },
   "units": {
     "production_supplied": "m3 gasoline A",

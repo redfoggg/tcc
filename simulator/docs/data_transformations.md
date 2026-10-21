@@ -92,24 +92,12 @@ m³ processados contra 951.998,117 m³ de capacidade.
 ## Escopo
 
 O catálogo, em `lib/gasoline_simulator/data/catalog.ex`, tem REFMAT,
-RECAP, REDUC, REFAP, REGAP, REPAR, RPBC, REPLAN, REVAP, REAM e RPCC. A Clara Camarão usa o código `RPCC`, não o rótulo `RECAP` de
+RECAP, REDUC, REFAP, REGAP, REPAR, RPBC, REPLAN, REVAP, REAM e RPCC.
+A Clara Camarão usa o código `RPCC`, não o rótulo `RECAP` de
 `estudo_tcc.typ`. A LUBNOR, em Fortaleza, produz lubrificantes, parafina
 e asfalto, e não registra gasolina A em 2025. Incluí-la só somaria
 petróleo ao FUT sem gasolina possível. Também ficam fora DAX OIL,
 MANGUINHOS, PARANÁ XISTO, RIOGRANDENSE, SSOIL e UNIVEN.
-
-A RNEST (Refinaria Abreu e Lima, PE) também fica fora, porque é uma
-refinaria de diesel. Nos dados da ANP de 2023 e 2024, 58,7% do que ela
-produziu foi diesel, 13,3% nafta vendida como produto e 1,0% gasolina A.
-Na REPLAN, a gasolina A é 24,6%. Desde a partida, em 2014, o rendimento
-anual de gasolina A da RNEST nunca passou de 4,0% (2021), e o melhor mês
-foi setembro de 2021, com 16,9%. Com ela no catálogo, a regra do item 1
-daria a ela o rendimento médio do país, cerca de 27%, que ela nunca
-mostrou. A RPCC fica no catálogo porque já rendeu nesse nível: 29,4% em
-2015 e 34,5% em 2016. Sem a RNEST, o Histórico 2025 do escopo tem 28,25
-milhões de m³ de gasolina A e FUT de 82,84%, contra 28,27 milhões e
-82,12% com ela. O FUT sobe porque a RNEST ocupava capacidade sem fazer
-gasolina.
 
 ## Hipóteses e simplificações
 
@@ -127,8 +115,7 @@ gasolina, ela rendeu de 0,002 a 0,006.
 **Por quê.** A hipótese é que o zero foi decisão de mercado, a escolha de
 outro produto, e não incapacidade da planta. O modelo pergunta o que
 aconteceria se ela produzisse gasolina como o parque nacional. A RPCC já
-fez isso: rendeu 29,4% em 2015 e 34,5% em 2016. A RNEST, que nunca
-rendeu nesse nível, saiu do catálogo (Escopo).
+rendeu nesse nível: 29,4% em 2015 e 34,5% em 2016, pelos dados da ANP.
 
 **Efeito.** O rendimento esperado no sorteio da RPCC fica em 0,180,
 bem acima de qualquer mês observado dela em 2025. Com o piso de 94%, o
@@ -335,19 +322,14 @@ rendimento nacional, seguem a mesma premissa.
 pelo HiGHS. Não há variável inteira. O solver não liga nem desliga
 planta. Quais plantas ficam no ar é decisão do cenário.
 
-**Por quê.** Uma versão anterior tinha uma variável binária de "planta
-ligada", fixada em 1 para toda planta no ar. Ela não mudava o valor
-ótimo, mas fazia o solver tratar o problema como programação linear
-inteira mista (MILP). Ela foi removida.
+**Por quê.** Nenhuma decisão do plano é inteira: o petróleo de cada
+planta é contínuo entre o piso e o teto, e quem fica no ar já vem
+decidido pelo cenário.
 
-**Efeito.** O valor ótimo é o mesmo. Em dias com déficit, várias
-alocações empatam no ótimo, e o LP pode desempatar de outro jeito que o
-MILP. Numa comparação da bateria inteira com a mesma semente, isso
-mudou pouco 16 das 90 execuções, no máximo 0,01 desvio padrão nas
-médias dos cenários, sem mudar nenhum marcador de significância. Se um
-dia o solver precisar decidir ligar ou desligar plantas, por exemplo
-com um custo fixo de operação, a variável binária volta a ser
-necessária.
+**Efeito.** Em dias com déficit, várias alocações podem empatar no
+ótimo, e o solver escolhe uma delas. Se um dia o plano precisar decidir
+ligar ou desligar plantas, por exemplo com um custo fixo de operação,
+o problema passa a precisar de variáveis binárias.
 
 ### 15. O planejador conhece a demanda do ano
 
@@ -359,20 +341,19 @@ catálogo, convertido em gasolina pelo rendimento realizado até o dia.
 Ela não inclui paradas, rendimento sorteado nem falhas de comboio. A
 conta está em `docs/model_specification.md`, Previsão do ano.
 
-**Por quê.** Sem a previsão, o plano só olhava o dia. Com o país
-coberto, deixava as plantas no piso de 94%, e em dezembro, quando a
-demanda sobe cerca de 12% sobre a média do ano, nem o parque inteiro
-no teto dava conta. Um planejador de verdade calcula a demanda do ano
-com antecedência e forma estoque antes do pico. A ideia não é atender
+**Por quê.** Em dezembro, a demanda fica cerca de 12% acima da média
+do ano, e nem o parque inteiro no teto dá conta dela no próprio mês. Um
+plano que olhasse só o dia deixaria as plantas no piso enquanto o país
+estivesse coberto e chegaria a dezembro sem estoque. Um planejador
+calcula a demanda do ano com antecedência e forma estoque antes do
+pico. A ideia não é atender
 a demanda a qualquer custo: a reserva é o mínimo que fecha a previsão,
 e o piso e o teto de cada planta continuam valendo.
 
-**Efeito.** Na bateria de teste com a semente `612777692`, a referência
-foi de 98,04% para 99,03% de cobertura efetiva, e a falta diária somada
-caiu de 0,66 para 0,34 milhão de m³. As plantas não ficam no teto o ano
-todo: o FUT médio fica perto de 97% no primeiro semestre e sobe para 99%
-a 100% de setembro a dezembro. O que sobra de falta está quase todo no
-Norte e no Nordeste, que dependem de comboio. O rendimento médio
-nacional, 0,2685, superestima o que o parque entrega; com ele no lugar
-do rendimento realizado, a reserva aparecia tarde demais, e dezembro
-ainda faltava 183 mil m³ numa execução.
+**Efeito.** As plantas não ficam no teto o ano todo: na referência, o
+FUT médio fica perto de 97% no primeiro semestre e sobe para 99% a 100%
+de setembro a dezembro. A falta que sobra está quase toda no Norte e no
+Nordeste, que dependem de comboio. A previsão usa o rendimento realizado
+até o dia, e não o médio nacional de 0,2685, porque o médio superestima
+o que o parque entrega e faria a reserva aparecer tarde demais para ser
+formada.
