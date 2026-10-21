@@ -4,7 +4,7 @@ Caminhos relativos a `simulator/`. A matemática está em
 `docs/model_specification.md`.
 
 O aplicativo é Elixir, rodando na BEAM, a máquina virtual do Erlang. Cada
-execução sobe a própria árvore de processos: as 12 refinarias, um
+execução sobe a própria árvore de processos: as 11 refinarias, um
 supervisor de comboios e um processo para cada comboio. Nada dessa
 árvore é compartilhado com outra execução, e ela é derrubada no fim do
 ano. Um GenServer é um processo servidor do OTP, a biblioteca padrão do
@@ -16,7 +16,7 @@ NIF (função nativa implementada fora da BEAM) gerado pelo Rustler.
 | Módulo | Papel |
 |---|---|
 | `Data.Repository` | Lê demanda, capacidade, outras cargas e rendimentos mensais dos CSVs |
-| `Data.Catalog` | Nomes e UFs (unidades da federação) das 12 refinarias |
+| `Data.Catalog` | Nomes e UFs (unidades da federação) das 11 refinarias |
 | `Data.Regions` | População de cada região e a região de cada refinaria |
 | `Data.Historical` | Lê `historical_2025_summary.json` |
 | `Refineries.Fleet` | Sobe e derruba a árvore de uma execução: plantas, supervisor de comboios e comboios |
@@ -25,7 +25,7 @@ NIF (função nativa implementada fora da BEAM) gerado pelo Rustler.
 | `Refineries.DeliverySupervisor` | Supervisor dos comboios de uma execução. Encerra o que falha no sorteio |
 | `Refineries.Distances` | Quilômetros de rodovia de cada par e dias de caminhão |
 | `Refineries.Logistics` | Soma as chegadas do dia, calcula pedido e oferta de cada região e envia os comboios |
-| `Refineries.Supervisor` | As 12 plantas do painel, que dizem quem está no ar. Uma planta que cai não derruba as outras |
+| `Refineries.Supervisor` | As 11 plantas do painel, que dizem quem está no ar. Uma planta que cai não derruba as outras |
 | `Scenarios.YieldSampling` | Sorteia $R_{i,d}$ na lista mensal válida da refinaria |
 | `Models.Overrides` | Ajuste de demanda, único ou por mês |
 | `Models.Problem` | Monta o dia, os limites de cada planta e a entrada do solver |

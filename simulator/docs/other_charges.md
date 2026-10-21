@@ -36,9 +36,9 @@ O Anuário 2021 registra 45,8 mil barris por dia de outras cargas em
 nessa categoria em 2020. Com o fator da ANP de 0,158987 m³ por barril e
 366 dias, isso dá 45.796 barris por dia, ou 2,59%.
 
-Nas 12 refinarias do catálogo, em 2025, outras cargas são 2,11% da carga
-atmosférica, 2,38 milhões de m³. O peso muda por planta: a REAM fica
-perto de 22%, REFAP e RNEST perto de 6%, e REPLAN, REPAR e REVAP perto de
+Nas 11 refinarias do catálogo, em 2025, outras cargas são 1,93% da carga
+atmosférica, 2,09 milhões de m³. O peso muda por planta: a REAM fica
+perto de 22%, a REFAP perto de 7%, e REPLAN, REPAR e REVAP perto de
 1% ou abaixo.
 
 ## FUT do trabalho
@@ -49,7 +49,7 @@ reprocessamentos, inclusive de terminais, dividida pela capacidade de
 referência. A definição está no Relatório de Produção e Vendas da
 Petrobras. Somar as três origens da ANP dá esse numerador. O
 `utilized_throughput_m3` curado já fazia essa soma, então o FUT
-histórico de 82,12% nas 12 refinarias já estava certo. O FUE (fator de
+histórico de 82,84% nas 11 refinarias já estava certo. O FUE (fator de
 utilização efetivo) da ANP, carga efetiva sobre capacidade nominal no
 painel regulatório, é outro dado.
 

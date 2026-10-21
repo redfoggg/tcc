@@ -82,7 +82,7 @@ $$
 \text{FUT} = 100 \times \frac{\sum_i \left(\text{PN}_{i,t} + \text{PI}_{i,t} + O_{i,t}\right)}{\sum_i K^P_{i,t}}
 $$
 
-$O_{i,t}$ são as outras cargas. As somas correm nas 12 refinarias, no
+$O_{i,t}$ são as outras cargas. As somas correm nas 11 refinarias, no
 mês ou no ano. É o FUT da Petrobras: toda a carga da destilação dividida
 pela capacidade de referência. O FUE (fator de utilização efetivo) que a
 ANP publica é outro indicador. Detalhes em `docs/other_charges.md`. A
@@ -91,13 +91,25 @@ m³ processados contra 951.998,117 m³ de capacidade.
 
 ## Escopo
 
-O catálogo, em `lib/gasoline_simulator/data/catalog.ex`, tem RNEST,
-REFMAT, RECAP, REDUC, REFAP, REGAP, REPAR, RPBC, REPLAN, REVAP, REAM e
-RPCC. A Clara Camarão usa o código `RPCC`, não o rótulo `RECAP` de
+O catálogo, em `lib/gasoline_simulator/data/catalog.ex`, tem REFMAT,
+RECAP, REDUC, REFAP, REGAP, REPAR, RPBC, REPLAN, REVAP, REAM e RPCC. A Clara Camarão usa o código `RPCC`, não o rótulo `RECAP` de
 `estudo_tcc.typ`. A LUBNOR, em Fortaleza, produz lubrificantes, parafina
 e asfalto, e não registra gasolina A em 2025. Incluí-la só somaria
 petróleo ao FUT sem gasolina possível. Também ficam fora DAX OIL,
 MANGUINHOS, PARANÁ XISTO, RIOGRANDENSE, SSOIL e UNIVEN.
+
+A RNEST (Refinaria Abreu e Lima, PE) também fica fora, porque é uma
+refinaria de diesel. Nos dados da ANP de 2023 e 2024, 58,7% do que ela
+produziu foi diesel, 13,3% nafta vendida como produto e 1,0% gasolina A.
+Na REPLAN, a gasolina A é 24,6%. Desde a partida, em 2014, o rendimento
+anual de gasolina A da RNEST nunca passou de 4,0% (2021), e o melhor mês
+foi setembro de 2021, com 16,9%. Com ela no catálogo, a regra do item 1
+daria a ela o rendimento médio do país, cerca de 27%, que ela nunca
+mostrou. A RPCC fica no catálogo porque já rendeu nesse nível: 29,4% em
+2015 e 34,5% em 2016. Sem a RNEST, o Histórico 2025 do escopo tem 28,25
+milhões de m³ de gasolina A e FUT de 82,84%, contra 28,27 milhões e
+82,12% com ela. O FUT sobe porque a RNEST ocupava capacidade sem fazer
+gasolina.
 
 ## Hipóteses e simplificações
 
@@ -109,21 +121,19 @@ números são do histórico de 2025.
 **O quê.** Um mês válido com gasolina A igual a 0 entra no sorteio como
 $R^{\text{BR}} = 0{,}2685$.
 
-**Onde.** RNEST, com 5 dos 11 meses válidos em zero (agosto a dezembro,
-rodando entre 82% e 87% da capacidade), e RPCC, com 8 dos 12 meses em
-zero. Nos meses em que produziram gasolina, a RNEST rendeu de 0,001 a
-0,055 e a RPCC de 0,002 a 0,006.
+**Onde.** RPCC, com 8 dos 12 meses em zero. Nos meses em que produziu
+gasolina, ela rendeu de 0,002 a 0,006.
 
 **Por quê.** A hipótese é que o zero foi decisão de mercado, a escolha de
 outro produto, e não incapacidade da planta. O modelo pergunta o que
-aconteceria se elas produzissem gasolina como o parque nacional.
+aconteceria se ela produzisse gasolina como o parque nacional. A RPCC já
+fez isso: rendeu 29,4% em 2015 e 34,5% em 2016. A RNEST, que nunca
+rendeu nesse nível, saiu do catálogo (Escopo).
 
-**Efeito.** O rendimento esperado no sorteio fica em 0,131 na RNEST e em
-0,180 na RPCC, bem acima de qualquer mês observado delas. Com o piso de
-94%, o modelo tira cerca de 0,78 milhão de m³ de gasolina A da RNEST e 0,44
-milhão da RPCC no ano, contra 22 mil e 2,5 mil m³ no histórico. Cerca
-de 1,2 milhão de m³ da produção do Nordeste no Planejado vem dessa
-hipótese.
+**Efeito.** O rendimento esperado no sorteio da RPCC fica em 0,180,
+bem acima de qualquer mês observado dela em 2025. Com o piso de 94%, o
+modelo tira cerca de 0,44 milhão de m³ de gasolina A da RPCC no ano,
+contra 2,5 mil m³ no histórico.
 
 ### 2. A REAM refina com o rendimento nacional
 
@@ -150,10 +160,10 @@ gasolina A com o piso de 94%.
 **O quê.** No Planejado e na referência, toda refinaria fica no ar nos
 365 dias, entre o piso de 94% e o teto de 100%.
 
-**Onde.** O histórico tem paradas: a REAM sem petróleo em 7 meses, a
-RNEST em fevereiro (0% da capacidade) e a REVAP em outubro e novembro
-(34,2% e 0,1%). As da RNEST e da REVAP têm perfil de manutenção: a
-destilação para e as outras unidades seguem processando estoque.
+**Onde.** O histórico tem paradas: a REAM sem petróleo em 7 meses e a
+REVAP em outubro e novembro (34,2% e 0,1%). A da REVAP tem perfil de
+manutenção: a destilação para e as outras unidades seguem processando
+estoque.
 
 **Por quê.** O Planejado mede o que o parque entrega com as plantas
 disponíveis. O efeito de paradas de manutenção é estudado à parte, nos
@@ -161,7 +171,7 @@ cenários `paradas_produtivas` e `manutencao_escalonada` de
 `docs/methodology.md`.
 
 **Efeito.** Com todas no ar e acima de 94%, o FUT (fator de utilização
-total) do Planejado fica perto de 97%, contra 82,12% no Histórico.
+total) do Planejado fica perto de 97%, contra 82,84% no Histórico.
 
 ### 4. Meses de operação parcial continuam no sorteio
 
@@ -169,10 +179,8 @@ total) do Planejado fica perto de 97%, contra 82,12% no Histórico.
 rendimento acima de 1. Mês com a destilação rodando pouco continua.
 
 **Onde.** REVAP em outubro (34,2% da capacidade, rendimento 0,385) e em
-dezembro (87,3%, 0,275), e RNEST em janeiro (21,5%, 0,055) e em março
-(40,5%, 0,003). Saem do sorteio a REVAP em novembro, com rendimento de
-240 porque a destilação quase parou, e a RNEST em fevereiro, sem
-petróleo.
+dezembro (87,3%, 0,275). Sai do sorteio a REVAP em novembro, com
+rendimento de 240 porque a destilação quase parou.
 
 **Por quê.** A regra usa só o que o dado mensal mostra, sem um corte de
 operação mínima.
@@ -307,7 +315,7 @@ do trabalho, não nos resultados da simulação.
 
 ### 13. A referência é produção planejada, não 2025 recalibrado
 
-**O quê.** No cenário `referencia`, as 12 plantas ficam no ar o ano
+**O quê.** No cenário `referencia`, as 11 plantas ficam no ar o ano
 inteiro, com planejamento central, sem paradas nem outros choques, e
 com o FUT entre o piso de 94% e o teto de 100%.
 
@@ -316,9 +324,9 @@ planejamento. O Histórico 2025 é o que aconteceu sob a dinâmica de
 mercado. A distância entre os dois é um resultado do estudo, não um
 erro de calibração.
 
-**Efeito.** Na bateria `20261018T043254Z`, a referência produz 33,60
-milhões de m³, contra 28,27 milhões em 2025, com FUT de 97,1% contra
-82,1%. Os itens 1 e 2, rendimento zero como média nacional e REAM com o
+**Efeito.** Com as 11 refinarias, a referência produz cerca de 33,0
+milhões de m³, contra 28,25 milhões em 2025, com FUT de cerca de 97,5%
+contra 82,8%. Os valores exatos estão no `report.md` de cada bateria. Os itens 1 e 2, rendimento zero como média nacional e REAM com o
 rendimento nacional, seguem a mesma premissa.
 
 ### 14. O plano é um problema de programação linear

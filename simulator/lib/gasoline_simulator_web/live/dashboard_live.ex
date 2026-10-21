@@ -186,8 +186,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
             refinaria, o rendimento sorteado transforma esse petróleo em gasolina
             A e comboios de caminhão levam a sobra das regiões que refinam mais
             para as que refinam menos. Cada comboio leva até 30 m³, só sai com
-            pelo menos 20 m³ e só cobre a demanda no dia em que chega. São 12
-            refinarias. A LUBNOR fica de fora porque não produz gasolina A.
+            pelo menos 20 m³ e só cobre a demanda no dia em que chega. São 11
+            refinarias. A LUBNOR fica de fora porque não produz gasolina A,
+            e a RNEST porque é uma refinaria de diesel.
             Derrubar uma planta tira o processo dela do ar, e o plano
             redistribui a demanda até ela ser recuperada. FUT é o fator de
             utilização total: a fração da capacidade ocupada pela destilação.
@@ -474,8 +475,9 @@ defmodule GasolineSimulatorWeb.DashboardLive do
       <div class="space-y-2 border-b border-base-300 px-6 py-5">
         <h2 class="text-xl font-semibold">Histórico 2025</h2>
         <p class="text-sm leading-5 opacity-70">
-          Artefato curado estático das 12 refinarias do catálogo. LUBNOR
-          não entra: não produz gasolina A. O FUT Total usa a carga de
+          Artefato curado estático das 11 refinarias do catálogo. LUBNOR
+          não entra: não produz gasolina A. RNEST não entra: é uma
+          refinaria de diesel. O FUT Total usa a carga de
           destilação atmosférica observada (petróleo e outras cargas)
           sobre a capacidade bruta.
         </p>

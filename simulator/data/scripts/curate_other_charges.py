@@ -41,7 +41,6 @@ SCOPE = {
     "REPAR",
     "REPLAN",
     "REVAP",
-    "RNEST",
     "RPBC",
     "RPCC",
 }
@@ -163,18 +162,20 @@ def rewrite_historical(scope_petroleum, scope_other):
     summary["annual"]["other_charges_m3"] = annual_other
     summary["schema_version"] = "4.0.0"
     summary["provenance"]["petroleum_processed"] = (
-        "Sum of ANP national and imported petroleum in the 12-refinery scope. "
+        "Sum of ANP national and imported petroleum in the 11-refinery scope. "
         "Excludes other charges."
     )
     summary["provenance"]["other_charges"] = (
-        "Sum of ANP OUTRAS CARGAS in the 12-refinery scope: petroleum residues, "
+        "Sum of ANP OUTRAS CARGAS in the 11-refinery scope: petroleum residues, "
         "terminal residues, and derivative residues reprocessed in atmospheric distillation."
     )
     summary["provenance"]["total_fut_pct"] = (
-        "Ratio-of-sums total FUT: 100 times observed atmospheric distillation charge "
-        "(petroleum plus other charges) across the fixed 12-refinery scope, divided by "
-        "raw monthly processing capacity across the same scope. Never an arithmetic mean "
-        "of individual refinery FUT."
+        "Petrobras total utilization factor (FUT): 100 times the full atmospheric "
+        "distillation charge (national petroleum, including C5+, imported petroleum, and "
+        "other charges) across the fixed 11-refinery scope, divided by nameplate processing "
+        "capacity. The curated utilized throughput already summed those feedstocks, so the "
+        "percentage is unchanged. This is not the ANP effective utilization factor (FUE). "
+        "Never an arithmetic mean of individual refinery FUT."
     )
     summary["provenance"]["aggregation"] = (
         "Annual volumes are precomputed sums of the twelve monthly values. Annual total "

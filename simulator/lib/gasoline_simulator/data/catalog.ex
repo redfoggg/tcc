@@ -10,8 +10,7 @@ defmodule GasolineSimulator.Data.Catalog do
     "REGAP" => {"Refinaria Gabriel Passos", "MG"},
     "RECAP" => {"Refinaria de Capuava", "SP"},
     "REAM" => {"Refinaria de Manaus", "AM"},
-    "RPCC" => {"Refinaria Clara Camarão", "RN"},
-    "RNEST" => {"Refinaria Abreu e Lima", "PE"}
+    "RPCC" => {"Refinaria Clara Camarão", "RN"}
   }
 
   @spec ids() :: [String.t()]

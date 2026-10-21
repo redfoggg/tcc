@@ -20,8 +20,11 @@ falha e os mesmos rendimentos.
 Ficam fixos:
 
 - O calendário de 2025, a demanda curada e a capacidade curada.
-- As 12 refinarias do catálogo. A LUBNOR, refinaria de lubrificantes do
-  Nordeste, fica de fora porque não produz gasolina A.
+- As 11 refinarias do catálogo. A LUBNOR, refinaria de lubrificantes do
+  Nordeste, fica de fora porque não produz gasolina A. A RNEST também
+  fica de fora: é uma refinaria de diesel, e o rendimento de gasolina A
+  dela nunca passou de 4% num ano (`docs/data_transformations.md`,
+  Escopo).
 - A divisão da demanda entre Norte, Nordeste, Sudeste e Sul pela
   população do Censo 2022 do IBGE (Instituto Brasileiro de Geografia e
   Estatística), com o Centro-Oeste somado ao Sudeste.
@@ -33,14 +36,14 @@ Ficam fixos:
   1 dia.
 - A taxa de falha dos comboios, exceto no cenário 7. No início da
   bateria, cada número de execução, de 1 a 10, recebe um sorteio de uma
-  taxa inteira de 1% a 5% para cada uma das 66 rotas. Rota é o par de
+  taxa inteira de 1% a 5% para cada uma das 55 rotas. Rota é o par de
   refinarias sem direção, e a taxa vale nos dois sentidos. A execução
   $n$ de todos os cenários usa as mesmas taxas da execução $n$ da
   referência. Assim, cenário e referência diferem só no choque, e o
   sorteio comum reduz o ruído da comparação.
-- A disponibilidade: as 12 plantas ficam no ar o ano inteiro, mesmo nos
+- A disponibilidade: as 11 plantas ficam no ar o ano inteiro, mesmo nos
   meses em que o histórico registra parada. As paradas de manutenção,
-  como as da RNEST em fevereiro e da REVAP em outubro e novembro, ficam
+  como a da REVAP em outubro e novembro, ficam
   de fora do plano. O efeito de parar plantas é medido nos cenários 2 e
   6.
 - O rendimento: zero no histórico é tratado como decisão de mercado e
@@ -100,7 +103,7 @@ execuções. A demanda é redistribuída entre as que ficam.
 
 ### 3. referencia
 
-O controle. As doze plantas ficam no ar, o rendimento muda todo dia,
+O controle. As 11 plantas ficam no ar, o rendimento muda todo dia,
 a demanda segue o dado curado, e rendimento e falha usam os sorteios
 comuns da execução. Os outros cenários mudam uma coisa em relação a este.
 
@@ -118,19 +121,23 @@ outro. A nota do manifesto grava os doze valores, no formato
 
 ### 6. manutencao_escalonada
 
-Cada execução sorteia uma ordem das 12 refinarias e tira uma do modelo
-em cada mês. Em qualquer dia há exatamente uma parada.
+Cada execução tira uma refinaria do modelo em cada mês. Em qualquer dia
+há exatamente uma parada. São 12 meses e 11 refinarias: todas param uma
+vez, e uma delas, sorteada, para uma segunda vez. A ordem dos 12 meses é
+sorteada, então as duas paradas da refinaria repetida podem cair em
+quaisquer meses, inclusive seguidos. A nota do manifesto grava os
+pares, no formato `1:REPAR|2:REAM`.
 
 ### 7. falha_alta_remessa
 
 Cada execução sorteia uma taxa de falha inteira de 41% a 100% para cada
-rota, no lugar das taxas comuns. As doze plantas ficam no ar.
+rota, no lugar das taxas comuns. As 11 plantas ficam no ar.
 
 ### 8. rotas_bloqueadas
 
 O bloqueio mira as rotas que mais carregam gasolina. Numa execução da
-referência, só 28 das 66 rotas levam comboio, e seis delas levam cerca
-de 82% do volume: REAM–REPLAN, REFMAT–REPLAN, REAM–REPAR, REFMAT–REPAR,
+referência, só cerca de 36 das 55 rotas levam comboio, e seis delas
+levam cerca de 87% do volume: REAM–REPLAN, REFMAT–REPLAN, REAM–REPAR, REFMAT–REPAR,
 REAM–REFAP e REFAP–REFMAT. Essa ordem se repete com sementes diferentes.
 
 Cada execução sorteia duas dessas seis rotas, sem repetição, e um bloco
@@ -253,17 +260,17 @@ de 95 dos intervalos calculados conteriam a média verdadeira do cenário.
 O intervalo não sabe que a cobertura não passa de 100%. Um limite acima
 de 100 se lê como 100.
 
-Exemplo com a cobertura efetiva da referência na bateria
-`data/studies/20261018T043254Z`:
+Exemplo com a cobertura efetiva da referência na bateria de semente
+`612777692`, com as 11 refinarias:
 
 | Passo | Valor |
 |---|---|
-| Média de 10 execuções | 99,367% |
-| dp | 0,099 p.p. |
-| ep $= 0{,}099 / \sqrt{10}$ | 0,031 p.p. |
+| Média de 10 execuções | 98,037% |
+| dp | 0,182 p.p. |
+| ep $= 0{,}182 / \sqrt{10}$ | 0,058 p.p. |
 | $t$ com 9 graus de liberdade | 2,262 |
-| Meia largura $= 2{,}262 \times 0{,}031$ | 0,071 p.p. |
-| IC 95% | 99,30% a 99,44% |
+| Meia largura $= 2{,}262 \times 0{,}058$ | 0,13 p.p. |
+| IC 95% | 97,91% a 98,17% |
 
 É o mesmo intervalo da coluna "IC 95% da efetiva" do `report.md`.
 
@@ -287,21 +294,21 @@ cenário não mudasse nada. Abaixo de 0,05, a diferença ganha o asterisco.
 
 Por que Welch e não o teste t de Student clássico: o clássico supõe que
 os dois grupos variam igual. Aqui isso é falso. Na cobertura efetiva, o
-dp de paradas_produtivas é 1,35 p.p., e o da referência é 0,10 p.p.
+dp de paradas_produtivas é 1,18 p.p., e o da referência é 0,18 p.p.
 
 Exemplo, cobertura efetiva de paradas_produtivas contra a referência:
 
 | Passo | Valor |
 |---|---|
-| Média de paradas_produtivas | 93,268% (dp 1,346, ep 0,426) |
-| Média da referência | 99,367% (dp 0,099, ep 0,031) |
-| Diferença | -6,10 p.p. |
-| ep da diferença $= \sqrt{0{,}426^2 + 0{,}031^2}$ | 0,427 p.p. |
-| $t = -6{,}10 / 0{,}427$ | -14,3 |
-| Graus de liberdade | 9,1 |
-| Valor p | $1{,}5 \times 10^{-7}$ |
+| Média de paradas_produtivas | 91,266% (dp 1,180, ep 0,373) |
+| Média da referência | 98,037% (dp 0,182, ep 0,058) |
+| Diferença | -6,77 p.p. |
+| ep da diferença $= \sqrt{0{,}373^2 + 0{,}058^2}$ | 0,378 p.p. |
+| $t = -6{,}77 / 0{,}378$ | -17,9 |
+| Graus de liberdade | 9,4 |
+| Valor p | $1{,}3 \times 10^{-8}$ |
 
-A diferença é 14 erros padrão, e o relatório mostra -6,10 *.
+A diferença é 18 erros padrão, e o relatório mostra -6,77 *.
 
 **Cuidados.**
 

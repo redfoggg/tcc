@@ -19,7 +19,7 @@ Código: `docs/model_runtime.md`.
 |---|---|
 | $d$ | Dia de 2025, de 1º de janeiro a 31 de dezembro |
 | $i$ | Refinaria |
-| $F$ | As 12 refinarias do catálogo |
+| $F$ | As 11 refinarias do catálogo |
 | $F_d$ | Refinarias no ar no dia $d$: o cenário as mantém e o processo delas responde |
 | $r$ | Região de demanda: Norte, Nordeste, Sudeste ou Sul |
 | $F_{r,d}$ | Refinarias de $F_d$ que ficam na região $r$ |
@@ -27,7 +27,7 @@ Código: `docs/model_runtime.md`.
 | Região | Refinarias | População (Censo 2022 do IBGE) | Fatia $s_r$ |
 |---|---|---:|---:|
 | Norte | REAM | 17.354.884 | 8,55% |
-| Nordeste | REFMAT, RNEST, RPCC | 54.658.515 | 26,91% |
+| Nordeste | REFMAT, RPCC | 54.658.515 | 26,91% |
 | Sudeste | RECAP, REDUC, REGAP, REPLAN, REVAP, RPBC | 101.129.651 | 49,80% |
 | Sul | REFAP, REPAR | 29.937.706 | 14,74% |
 
@@ -36,11 +36,12 @@ IBGE é o Instituto Brasileiro de Geografia e Estatística. O Sudeste soma
 que não tem refinaria no catálogo. O total é 203.080.756. Os nomes de
 cada sigla de refinaria estão em `docs/refinery_distances.md`. A LUBNOR,
 refinaria de lubrificantes do Nordeste, fica de fora porque não produz
-gasolina A.
+gasolina A. A RNEST fica de fora porque é uma refinaria de diesel
+(`docs/data_transformations.md`, Escopo).
 
 No Planejado, $F_d = F$ em todos os dias, salvo planta derrubada no
-painel. A hipótese é que as paradas do histórico, como as de manutenção
-da RNEST e da REVAP, não fazem parte do plano. O efeito de tirar plantas
+painel. A hipótese é que as paradas do histórico, como a de manutenção
+da REVAP, não fazem parte do plano. O efeito de tirar plantas
 do ar é estudado nos cenários de parada de `docs/methodology.md`.
 
 ## Dados de cada dia

@@ -300,21 +300,13 @@ defmodule GasolineSimulator.Scenarios.Methodology do
   end
 
   defp availability(:staggered, _context) do
-    assignment =
-      Catalog.ids()
-      |> Enum.shuffle()
-      |> Enum.with_index(1)
-
-    by_month = Map.new(assignment, fn {id, month} -> {month, id} end)
-
-    label =
-      assignment
-      |> Enum.sort_by(&elem(&1, 1))
-      |> Enum.map_join("|", fn {id, month} -> "#{month}:#{id}" end)
+    ids = Catalog.ids()
+    assignment = Enum.zip(1..12, Enum.shuffle([Enum.random(ids) | ids]))
+    by_month = Map.new(assignment)
+    label = Enum.map_join(assignment, "|", fn {month, id} -> "#{month}:#{id}" end)
 
     alive_ids = fn day ->
-      offline = Map.fetch!(by_month, day.month)
-      Enum.reject(Catalog.ids(), &(&1 == offline))
+      Enum.reject(ids, &(&1 == Map.fetch!(by_month, day.month)))
     end
 
     {alive_ids,

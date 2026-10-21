@@ -5,13 +5,20 @@ dados do estudo sustentam e quais não sustentam. Não é o texto do TCC
 (trabalho de conclusão de curso). Ele guarda as linhas de argumento e a
 evidência de cada uma, para o autor escrever as conclusões no TCC.
 
-Todos os números vêm da bateria `data/studies/20261018T043254Z`, com
-semente `612777692`, e estão em `analysis/report.md` e nos CSVs de
-`analysis/`. Rodar a bateria de novo com a mesma semente reproduz os
-números. Com outra semente, eles mudam um pouco. A ordem de grandeza
-dessa mudança é a largura do IC 95% (intervalo de confiança de 95% da
-média): na referência, a cobertura efetiva fica entre 99,30% e 99,44%,
-uma faixa de 0,14 p.p. (pontos percentuais). Mm³ são milhões de m³.
+**Números desatualizados.** Os números abaixo vêm da bateria
+`20261018T043254Z`, semente `612777692`, feita com 12 refinarias. Essa
+bateria foi apagada quando a RNEST saiu do catálogo
+(`docs/data_transformations.md`, Escopo), e as tabelas precisam ser
+refeitas com a próxima bateria. As linhas de argumento continuam
+valendo. Os números mudam: sem a RNEST, o Histórico 2025 do escopo tem
+28,25 Mm³ e FUT de 82,84%, a referência produz menos, e o Nordeste
+deixa de ter a produção que a RNEST tinha no modelo.
+
+Rodar a bateria de novo com a mesma semente reproduz os números. Com
+outra semente, eles mudam um pouco. A ordem de grandeza dessa mudança
+é a largura do IC 95% (intervalo de confiança de 95% da média), perto
+de 0,1 a 0,3 p.p. (pontos percentuais) na cobertura efetiva da
+referência. Mm³ são milhões de m³.
 
 ## Premissas que enquadram a leitura
 
@@ -19,7 +26,7 @@ Os detalhes estão em `docs/data_transformations.md`, seção Hipóteses e
 simplificações, itens 11 a 14. As que mais pesam na comparação:
 
 - **A referência não é uma calibração de 2025.** Ela é a produção
-  planejada sem desastres: as 12 plantas no ar o ano inteiro, com o
+  planejada sem desastres: as 11 plantas no ar o ano inteiro, com o
   rendimento sorteado do histórico e FUT (fator de utilização total)
   entre 94% e 100%. A pergunta é o que o parque podia entregar, não o
   que entregou.
