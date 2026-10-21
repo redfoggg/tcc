@@ -30,6 +30,12 @@ Ficam fixos:
   Estatística), com o Centro-Oeste somado ao Sudeste.
 - O FUT (fator de utilização total): piso de 94% e teto de 100%. O
   cenário 9 muda o teto.
+- A previsão do ano: o planejador conhece desde janeiro a demanda de
+  cada dia, já com o ajuste do cenário, e o teto do parque. Quando um
+  mês à frente pede mais do que o parque refina no teto, como dezembro,
+  ele forma estoque antes, subindo as plantas acima do piso. Paradas,
+  rendimento sorteado e falhas de comboio ficam fora da previsão. A
+  conta está em `docs/model_specification.md`, Previsão do ano.
 - A rampa de quem volta de uma parada: começa em 40% e sobe 1 ponto
   percentual em cada dia em que o déficit do país fica em até 1 m³.
 - O prazo de cada comboio: o tempo de caminhão da estrada, com mínimo de
@@ -116,7 +122,8 @@ os dias.
 
 Cada execução sorteia, para cada mês, um ajuste inteiro de -1% a +15%.
 O ajuste vale em todos os dias do mês e não se acumula de um mês para o
-outro. A nota do manifesto grava os doze valores, no formato
+outro. O planejador conhece os doze ajustes desde janeiro, como parte da
+previsão do ano. A nota do manifesto grava os doze valores, no formato
 `demanda 1:-1 2:11`.
 
 ### 6. manutencao_escalonada

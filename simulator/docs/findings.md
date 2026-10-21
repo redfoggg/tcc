@@ -12,7 +12,9 @@ bateria foi apagada quando a RNEST saiu do catálogo
 refeitas com a próxima bateria. As linhas de argumento continuam
 valendo. Os números mudam: sem a RNEST, o Histórico 2025 do escopo tem
 28,25 Mm³ e FUT de 82,84%, a referência produz menos, e o Nordeste
-deixa de ter a produção que a RNEST tinha no modelo.
+deixa de ter a produção que a RNEST tinha no modelo. O plano também
+passou a usar a previsão do ano (`docs/data_transformations.md`, item
+15), o que sobe a cobertura de todos os cenários com folga de teto.
 
 Rodar a bateria de novo com a mesma semente reproduz os números. Com
 outra semente, eles mudam um pouco. A ordem de grandeza dessa mudança
@@ -23,7 +25,7 @@ referência. Mm³ são milhões de m³.
 ## Premissas que enquadram a leitura
 
 Os detalhes estão em `docs/data_transformations.md`, seção Hipóteses e
-simplificações, itens 11 a 14. As que mais pesam na comparação:
+simplificações, itens 11 a 15. As que mais pesam na comparação:
 
 - **A referência não é uma calibração de 2025.** Ela é a produção
   planejada sem desastres: as 11 plantas no ar o ano inteiro, com o
@@ -37,6 +39,10 @@ simplificações, itens 11 a 14. As que mais pesam na comparação:
   real tem dutos e cabotagem, que levam mais volume com menos perda.
   Por isso a logística do modelo é mais difícil que a real, e as
   coberturas são um limite inferior.
+- **O planejador conhece a demanda do ano.** Ele forma estoque antes
+  dos meses em que a demanda passa do teto do parque, como dezembro.
+  Paradas, rendimento sorteado e falhas de comboio ficam fora da
+  previsão.
 - **A demanda de cada região segue a população** do Censo 2022, com o
   Centro-Oeste somado ao Sudeste.
 

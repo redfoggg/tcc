@@ -348,3 +348,31 @@ médias dos cenários, sem mudar nenhum marcador de significância. Se um
 dia o solver precisar decidir ligar ou desligar plantas, por exemplo
 com um custo fixo de operação, a variável binária volta a ser
 necessária.
+
+### 15. O planejador conhece a demanda do ano
+
+**O quê.** O plano de cada dia recebe uma reserva: o estoque que ele
+precisa ter no fim do dia para que a demanda prevista do resto do ano
+caiba no teto do parque. A previsão tem a demanda de cada dia, já com
+o ajuste do cenário, e o teto de petróleo de todas as refinarias do
+catálogo, convertido em gasolina pelo rendimento realizado até o dia.
+Ela não inclui paradas, rendimento sorteado nem falhas de comboio. A
+conta está em `docs/model_specification.md`, Previsão do ano.
+
+**Por quê.** Sem a previsão, o plano só olhava o dia. Com o país
+coberto, deixava as plantas no piso de 94%, e em dezembro, quando a
+demanda sobe cerca de 12% sobre a média do ano, nem o parque inteiro
+no teto dava conta. Um planejador de verdade calcula a demanda do ano
+com antecedência e forma estoque antes do pico. A ideia não é atender
+a demanda a qualquer custo: a reserva é o mínimo que fecha a previsão,
+e o piso e o teto de cada planta continuam valendo.
+
+**Efeito.** Na bateria de teste com a semente `612777692`, a referência
+foi de 98,04% para 99,03% de cobertura efetiva, e a falta diária somada
+caiu de 0,66 para 0,34 milhão de m³. As plantas não ficam no teto o ano
+todo: o FUT médio fica perto de 97% no primeiro semestre e sobe para 99%
+a 100% de setembro a dezembro. O que sobra de falta está quase todo no
+Norte e no Nordeste, que dependem de comboio. O rendimento médio
+nacional, 0,2685, superestima o que o parque entrega; com ele no lugar
+do rendimento realizado, a reserva aparecia tarde demais, e dezembro
+ainda faltava 183 mil m³ numa execução.

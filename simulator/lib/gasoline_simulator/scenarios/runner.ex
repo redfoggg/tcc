@@ -47,6 +47,8 @@ defmodule GasolineSimulator.Scenarios.Runner do
       seed_path: seed_path
     }
 
+    ctx = Map.merge(ctx, %{forecast: forecast(ctx), days_after: days_after()})
+
     with {:ok, days, lost_m3} <- run_days(ctx) do
       {:ok,
        %{
@@ -348,12 +350,50 @@ defmodule GasolineSimulator.Scenarios.Runner do
         landed_m3: landed,
         landed_by_region: landed_by_region,
         carried_deficit_m3: carried_deficit,
+        reserve_m3: reserve(ctx, day, planning_yield),
         stock_by_region: stock_by_region,
         planning_yield: planning_yield,
         refineries: refineries
       })
 
     Result.from_solver(problem, Solver.solve(Problem.to_solver_input(problem), ctx.solver_opts))
+  end
+
+  # Forecast the planner holds for the year: each day's demand, with the
+  # scenario adjustment, and the petroleum the parks can refine at the
+  # ceiling.
+  defp forecast(ctx) do
+    Map.new(Repository.days(), fn day ->
+      demand = adjusted_demand(ctx.overrides, day, ctx.year_data.demand_by_day[day].demand_m3)
+
+      ceiling =
+        Enum.sum_by(ctx.year_data.refineries_by_day[day], fn refinery ->
+          max(ctx.burst * refinery.processing_capacity_m3 - refinery.other_charges_m3, 0.0)
+        end)
+
+      {day, {demand, ceiling}}
+    end)
+  end
+
+  # Stock the planner wants at the end of `day` so that the forecast demand
+  # of the rest of the year fits under the ceiling at the yield seen so far.
+  # Walks the remaining days backwards: a day whose demand exceeds what the
+  # parks can refine passes its shortfall to the day before.
+  defp reserve(ctx, day, planning_yield) do
+    ctx.days_after
+    |> Map.fetch!(day)
+    |> Enum.reduce(0.0, fn later, ahead ->
+      {demand, ceiling} = Map.fetch!(ctx.forecast, later)
+      max(ahead + demand - ceiling * planning_yield, 0.0)
+    end)
+  end
+
+  defp days_after do
+    days = Repository.days()
+
+    days
+    |> Enum.with_index(1)
+    |> Map.new(fn {day, i} -> {day, days |> Enum.drop(i) |> Enum.reverse()} end)
   end
 
   defp catch_up_ratio(refinery, planning_yield, ctx, plant_catch_up) do

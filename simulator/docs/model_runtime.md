@@ -42,11 +42,16 @@ NIF (função nativa implementada fora da BEAM) gerado pelo Rustler.
 
 ## Um dia de simulação
 
-`Scenarios.Runner` faz, em cada dia:
+Antes do primeiro dia, `Scenarios.Runner` monta a previsão do ano: a
+demanda de cada dia, com o ajuste do cenário, e o teto de petróleo do
+parque.
+
+Em cada dia, ele:
 
 1. Pergunta às plantas quem responde e recebe as cargas que chegam.
 2. Monta o problema com o tanque de cada região, as chegadas, o déficit
-   de ontem, o rendimento de planejamento e o piso de cada planta.
+   de ontem, a reserva que a previsão pede para o resto do ano, o
+   rendimento de planejamento e o piso de cada planta.
 3. Chama o solver uma vez, para todas as plantas.
 4. Calcula a gasolina realizada com o rendimento sorteado e credita no
    tanque de cada planta.

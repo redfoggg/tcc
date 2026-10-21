@@ -9,6 +9,7 @@ defmodule GasolineSimulator.Models.Problem do
     :landed_m3,
     :planning_yield,
     :carried_deficit_m3,
+    :reserve_m3,
     :stock_by_region,
     :landed_by_region,
     refineries: []
@@ -20,6 +21,7 @@ defmodule GasolineSimulator.Models.Problem do
           landed_m3: float(),
           planning_yield: float(),
           carried_deficit_m3: float(),
+          reserve_m3: float(),
           stock_by_region: map(),
           landed_by_region: map(),
           refineries: [Refinery.t()]
@@ -45,6 +47,7 @@ defmodule GasolineSimulator.Models.Problem do
       landed_m3: attrs.landed_m3,
       planning_yield: attrs.planning_yield,
       carried_deficit_m3: attrs.carried_deficit_m3,
+      reserve_m3: attrs.reserve_m3,
       stock_by_region: attrs.stock_by_region,
       landed_by_region: attrs.landed_by_region,
       refineries: refineries
@@ -67,7 +70,9 @@ defmodule GasolineSimulator.Models.Problem do
       end)
 
     stock = problem.stock_by_region |> Map.values() |> Enum.sum()
-    refining = max(problem.demand_m3 + problem.carried_deficit_m3 - stock, 0.0)
+
+    refining =
+      max(problem.demand_m3 + problem.carried_deficit_m3 + problem.reserve_m3 - stock, 0.0)
 
     %{
       demand: refining / scale,

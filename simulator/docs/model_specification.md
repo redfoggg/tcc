@@ -163,6 +163,7 @@ Dados que o plano recebe, em m³ de gasolina:
 | $A_{r,d}$, $A_d$ | Gasolina que chegou de comboio hoje, na região e no país |
 | $S_{r,d}$, $S_d$ | Tanque de abertura: gasolina que sobrou de ontem, na região e no país |
 | $U_{d-1}$ | Déficit realizado ontem, definido em Execução do dia |
+| $V_d$ | Reserva: estoque que o plano quer ter no fim do dia, definida em Previsão do ano |
 
 Função objetivo:
 
@@ -190,16 +191,51 @@ $$
 $$
 
 $$
-\sum_{i \in F_d} P_{i,d} + u_d + \frac{A_d}{\bar R_d} - E_d = \frac{\max\!\left(D_d + U_{d-1} - S_d,\ 0\right)}{\bar R_d}
+\sum_{i \in F_d} P_{i,d} + u_d + \frac{A_d}{\bar R_d} - E_d = \frac{\max\!\left(D_d + U_{d-1} + V_d - S_d,\ 0\right)}{\bar R_d}
 $$
 
 A primeira mantém cada planta na própria faixa. A segunda fecha cada
 região com a refinação dela, a falta, o que chegou e o tanque dela. A
-terceira fecha o país. O alvo nacional soma a falta de ontem e desconta o
-tanque, então sobra de um mês reduz o que o mês seguinte precisa
-refinar. Dividir por $\bar R_d$ converte gasolina em petróleo. Quando uma
+terceira fecha o país. O alvo nacional soma a falta de ontem e a
+reserva, e desconta o tanque, então sobra de um mês reduz o que o mês
+seguinte precisa refinar. Dividir por $\bar R_d$ converte gasolina em petróleo. Quando uma
 região curta já está no teto, só a restrição nacional ainda tem falta, e
 o plano sobe as plantas das outras regiões.
+
+## Previsão do ano
+
+O planejador conhece, desde o início do ano, a demanda prevista de cada
+dia, já com o ajuste do cenário ($D_t$ da seção Demanda), e o teto de
+petróleo do parque, $\bar C_t = \sum_i C_{i,t}$, somado sobre todas as
+refinarias do catálogo. No cenário `mobilidade_fut`, $C_{i,t}$ usa o teto
+do cenário. Ele não sabe de paradas, de rendimento sorteado
+nem de falha de comboio.
+
+A reserva $V_d$ é o estoque necessário no fim do dia $d$ para que a
+demanda prevista do resto do ano caiba no teto, com o rendimento
+realizado até aqui, $\bar R_d$. Ela é calculada de trás para frente
+sobre os dias seguintes:
+
+$$
+W_{365} = 0
+\qquad
+W_{t-1} = \max\!\left(W_t + D_t - \bar C_t \, \bar R_d,\ 0\right)
+\qquad
+V_d = W_d
+$$
+
+Um dia cuja demanda passa do que o parque refina no teto passa a
+diferença para o dia anterior. Enquanto o teto dá conta de cada dia à
+frente, $V_d = 0$ e o plano é o mesmo de antes. Quando um mês à frente
+pede mais do que o parque refina, como dezembro, a reserva aparece nas
+semanas anteriores, e o plano sobe as plantas acima do piso para formar
+estoque. A reserva é o mínimo que fecha a previsão: o plano não
+persegue a demanda a qualquer custo, e o piso e o teto de cada planta
+continuam valendo.
+
+Usar $\bar R_d$, e não $R^{\text{BR}}$, importa: o rendimento médio
+nacional superestima o que o parque entrega, e com ele a reserva
+aparece tarde demais para ser formada.
 
 ## Execução do dia
 
