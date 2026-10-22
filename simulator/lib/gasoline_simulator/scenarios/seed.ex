@@ -1,8 +1,4 @@
 defmodule GasolineSimulator.Scenarios.Seed do
-  # Each process that draws gets its own seed, derived from the study seed and a
-  # fixed path such as {"referencia", 3}, so results do not depend on the order
-  # in which parallel runs finish.
-
   @algorithm :exsss
   @range 4_294_967_296
   @max_seed 999_999_999

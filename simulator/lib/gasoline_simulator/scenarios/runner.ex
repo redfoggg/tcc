@@ -359,9 +359,6 @@ defmodule GasolineSimulator.Scenarios.Runner do
     Result.from_solver(problem, Solver.solve(Problem.to_solver_input(problem), ctx.solver_opts))
   end
 
-  # Forecast the planner holds for the year: each day's demand, with the
-  # scenario adjustment, and the petroleum the parks can refine at the
-  # ceiling.
   defp forecast(ctx) do
     Map.new(Repository.days(), fn day ->
       demand = adjusted_demand(ctx.overrides, day, ctx.year_data.demand_by_day[day].demand_m3)
@@ -375,10 +372,6 @@ defmodule GasolineSimulator.Scenarios.Runner do
     end)
   end
 
-  # Stock the planner wants at the end of `day` so that the forecast demand
-  # of the rest of the year fits under the ceiling at the yield seen so far.
-  # Walks the remaining days backwards: a day whose demand exceeds what the
-  # parks can refine passes its shortfall to the day before.
   defp reserve(ctx, day, planning_yield) do
     ctx.days_after
     |> Map.fetch!(day)

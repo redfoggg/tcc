@@ -252,7 +252,7 @@ defmodule GasolineSimulatorWeb.DashboardLive do
         <section id="dashboard-study" class="rounded border p-4 space-y-3">
           <h2 class="font-semibold">Bateria metodológica</h2>
           <p class="text-sm opacity-70">
-            Nove cenários, dez execuções cada. O botão grava um CSV por
+            Nove cenários, cem execuções cada. O botão grava um CSV por
             execução em data/studies. As plantas deste painel permanecem
             como estão. Cada cenário traz a própria demanda. Toda remessa usa
             o tempo de caminhão de cada par. O ajuste de demanda e a

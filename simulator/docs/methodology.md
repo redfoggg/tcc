@@ -1,12 +1,16 @@
 # Metodologia dos cenários
 
 A bateria é um experimento separado do painel. O botão "Rodar bateria"
-roda 9 cenários, com 10 execuções cada, e grava um CSV (arquivo de
+roda 9 cenários, com 100 execuções cada, e grava um CSV (arquivo de
 valores separados por vírgula) por execução em
 `data/studies/<timestamp>/`. A bateria e a análise dela ficam no
 repositório como resultado do trabalho. As plantas do
 painel permanecem como estão, e o ajuste de demanda e as taxas de falha
 do formulário não entram: cada cenário traz os próprios insumos.
+
+As execuções rodam em paralelo, no máximo uma por núcleo da máquina.
+Uma bateria de 900 execuções leva cerca de 13 minutos numa máquina de
+14 núcleos e ocupa perto de 700 MB em disco.
 
 ## O que vale em todos os cenários
 
@@ -38,7 +42,7 @@ Ficam fixos:
 - O prazo de cada comboio: o tempo de caminhão da estrada, com mínimo de
   1 dia.
 - A taxa de falha dos comboios, exceto no cenário 7. No início da
-  bateria, cada número de execução, de 1 a 10, recebe um sorteio de uma
+  bateria, cada número de execução, de 1 a 100, recebe um sorteio de uma
   taxa inteira de 1% a 5% para cada uma das 55 rotas. Rota é o par de
   refinarias sem direção, e a taxa vale nos dois sentidos. A execução
   $n$ de todos os cenários usa as mesmas taxas da execução $n$ da
@@ -52,7 +56,7 @@ Ficam fixos:
 - O rendimento: zero no histórico é tratado como decisão de mercado e
   vira a média nacional. A REAM, que deixou de refinar depois da
   privatização, usa a média nacional todo dia. No início da bateria,
-  cada número de execução, de 1 a 10, recebe um sorteio de rendimento
+  cada número de execução, de 1 a 100, recebe um sorteio de rendimento
   para cada refinaria e dia, e a execução $n$ de todos os cenários usa
   esse mesmo sorteio. A exceção é o cenário 1, que fixa o rendimento
   mínimo.
@@ -87,7 +91,7 @@ como no painel.
 
 Todas as refinarias ficam no ar. Em todos os dias, cada uma rende o
 menor rendimento mensal positivo que teve em 2025. O rendimento é o
-mesmo nas dez execuções. Só os sorteios de falha dos comboios mudam.
+mesmo em todas as execuções. Só os sorteios de falha dos comboios mudam.
 
 ### 2. paradas_produtivas
 
@@ -153,13 +157,16 @@ meses, no formato `rotas REAM|REPAR REFMAT|REPLAN meses 3|4`.
 ### 9. mobilidade_fut
 
 O rendimento segue a referência, que muda a cada dia. O que muda é o
-teto de FUT, de 80% na execução 1 a 98% na execução 10, dois pontos por
-execução. Quando o teto fica abaixo de 94%, o piso desce junto e as
+teto de FUT, de 80% a 98%, dois pontos por vez. Cada teto vale para um
+bloco de 10 execuções seguidas: 80% nas execuções 1 a 10, 82% nas
+execuções 11 a 20, até 98% nas execuções 91 a 100. Quando o teto fica abaixo de 94%, o piso desce junto e as
 plantas rodam travadas no teto. O manifesto grava o teto em `fut_lock`.
 
-As dez execuções são dez tetos diferentes, não repetições do mesmo
-choque. O resultado se lê como curva: cobertura, déficit e produção em
-função do teto. A execução $n$ usa os mesmos rendimentos e as mesmas
+Os dez blocos são dez tetos diferentes, e a média anual do cenário
+mistura todos eles. O resultado se lê como curva: cobertura, déficit e
+produção em função do teto. Dentro de um bloco, as 10 execuções são
+repetições do mesmo teto, e a tabela por teto do relatório traz média e
+desvio padrão de cada um, com o IC 95% em `scenario_ceiling.csv`. A execução $n$ usa os mesmos rendimentos e as mesmas
 taxas de falha da execução $n$ da referência, que tem teto de 100%.
 
 ## Arquivos
@@ -222,8 +229,8 @@ Para cada cenário, o resumo das execuções que terminaram traz:
 
 ### Como ler a estatística
 
-**O problema.** Cada cenário roda 10 vezes, e cada execução dá um número
-diferente por causa dos sorteios. A média das 10 é uma estimativa, não o
+**O problema.** Cada cenário roda 100 vezes, e cada execução dá um número
+diferente por causa dos sorteios. A média das 100 é uma estimativa, não o
 valor verdadeiro do cenário. Daí saem duas perguntas diferentes:
 
 | Pergunta | Ferramenta | No relatório |
@@ -240,21 +247,23 @@ incerteza da média, e não de uma execução:
 
 $$\text{ep} = \frac{\text{dp}}{\sqrt{n}}$$
 
-Com 10 execuções, o erro padrão é cerca de um terço do desvio padrão. A
-média de 10 execuções varia menos do que uma execução sozinha.
+Com 100 execuções, o erro padrão é um décimo do desvio padrão. A média
+de 100 execuções varia bem menos do que uma execução sozinha.
 
 **Distribuição t de Student e IC 95%.** Se o desvio padrão verdadeiro
 fosse conhecido, bastaria a curva normal, com multiplicador 1,96. Mas
-ele também é estimado com só 10 execuções, e pode sair menor do que o
-real. A curva t de Student cobre esse risco: tem caudas mais pesadas e
+ele também é estimado a partir das execuções, e pode sair menor do que
+o real. A curva t de Student cobre esse risco: tem caudas mais pesadas e
 alarga o intervalo. O tamanho do alargamento depende dos graus de
-liberdade, $n-1 = 9$ aqui. Multiplicador para 95%:
+liberdade, $n-1 = 99$ aqui. Com tantas execuções, a curva t já fica
+quase igual à normal. Multiplicador para 95%:
 
 | Execuções | Graus de liberdade | Multiplicador $t$ |
 |---|---|---|
 | 5 | 4 | 2,78 |
 | 10 | 9 | 2,262 |
 | 30 | 29 | 2,05 |
+| 100 | 99 | 1,984 |
 | infinitas | infinitos | 1,96 |
 
 $$\text{IC} = \text{média} \pm t \times \text{ep}$$
@@ -265,16 +274,16 @@ O intervalo não sabe que a cobertura não passa de 100%. Um limite acima
 de 100 se lê como 100.
 
 Exemplo com a cobertura efetiva da referência na bateria
-`data/studies/20261021T045244Z`:
+`data/studies/20261022T182537Z`:
 
 | Passo | Valor |
 |---|---|
-| Média de 10 execuções | 98,872% |
-| dp | 0,565 p.p. |
-| ep $= 0{,}565 / \sqrt{10}$ | 0,179 p.p. |
-| $t$ com 9 graus de liberdade | 2,262 |
-| Meia largura $= 2{,}262 \times 0{,}179$ | 0,40 p.p. |
-| IC 95% | 98,47% a 99,28% |
+| Média de 100 execuções | 99,082% |
+| dp | 0,284 p.p. |
+| ep $= 0{,}284 / \sqrt{100}$ | 0,028 p.p. |
+| $t$ com 99 graus de liberdade | 1,984 |
+| Meia largura $= 1{,}984 \times 0{,}028$ | 0,056 p.p. |
+| IC 95% | 99,03% a 99,14% |
 
 É o mesmo intervalo da coluna "IC 95% da efetiva" do `report.md`.
 
@@ -288,9 +297,9 @@ Os graus de liberdade saem da fórmula de Welch–Satterthwaite:
 
 $$\text{gl} = \frac{(\text{ep}_1^2 + \text{ep}_2^2)^2}{\dfrac{\text{ep}_1^4}{n_1 - 1} + \dfrac{\text{ep}_2^4}{n_2 - 1}}$$
 
-Com dois grupos de 10 que variam igual, ela dá 18. Quando um grupo varia
-muito mais do que o outro, ela cai para perto de 9, porque quase toda a
-incerteza vem de um grupo só. Menos graus de liberdade tornam o teste
+Com dois grupos de 100 que variam igual, ela dá 198. Quando um grupo
+varia muito mais do que o outro, ela cai para perto de 99, porque quase
+toda a incerteza vem de um grupo só. Menos graus de liberdade tornam o teste
 mais exigente.
 
 O valor p é a chance de ver uma diferença deste tamanho, ou maior, se o
@@ -298,27 +307,29 @@ cenário não mudasse nada. Abaixo de 0,05, a diferença ganha o asterisco.
 
 Por que Welch e não o teste t de Student clássico: o clássico supõe que
 os dois grupos variam igual. Aqui isso é falso. Na cobertura efetiva, o
-dp de demanda_mensal é 1,35 p.p., e o da referência é 0,57 p.p.
+dp de demanda_mensal é 1,30 p.p., e o da referência é 0,28 p.p.
 
 Exemplo, cobertura efetiva de demanda_mensal contra a referência:
 
 | Passo | Valor |
 |---|---|
-| Média de demanda_mensal | 93,869% (dp 1,351, ep 0,427) |
-| Média da referência | 98,872% (dp 0,565, ep 0,179) |
-| Diferença | -5,00 p.p. |
-| ep da diferença $= \sqrt{0{,}427^2 + 0{,}179^2}$ | 0,463 p.p. |
-| $t = -5{,}00 / 0{,}463$ | -10,8 |
-| Graus de liberdade | 12,1 |
-| Valor p | $1{,}5 \times 10^{-7}$ |
+| Média de demanda_mensal | 94,538% (dp 1,296, ep 0,130) |
+| Média da referência | 99,082% (dp 0,284, ep 0,028) |
+| Diferença | -4,54 p.p. |
+| ep da diferença $= \sqrt{0{,}130^2 + 0{,}028^2}$ | 0,133 p.p. |
+| $t = -4{,}54 / 0{,}133$ | -34,2 |
+| Graus de liberdade | 108,5 |
+| Valor p | $5{,}4 \times 10^{-60}$ |
 
-A diferença é 11 erros padrão, e o relatório mostra -5,00 *.
+A diferença é 34 erros padrão, e o relatório mostra -4,54 *.
 
 **Cuidados.**
 
 - Significativo não quer dizer importante. O asterisco diz que a
   diferença não é sorte, não que ela é grande. Leia sempre o tamanho do
-  Δ junto com o asterisco.
+  Δ junto com o asterisco. Com 100 execuções, até diferenças de poucos
+  décimos de ponto percentual ganham asterisco, então o tamanho do Δ é
+  a leitura principal.
 - `scenario_vs_reference.csv` faz 104 testes (8 cenários × 13
   medidas), sem correção para comparações múltiplas. A tabela do
   `report.md` mostra só 5 medidas por cenário, mas os outros testes

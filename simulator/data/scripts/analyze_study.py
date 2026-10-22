@@ -13,6 +13,15 @@ HISTORICAL = ROOT / "data" / "curated" / "historical_2025_summary.json"
 PRODUCTION = ROOT / "data" / "curated" / "anp_2025_gasoline_a_production_by_refinery_monthly.csv"
 REFERENCE = "referencia"
 CEILING = "mobilidade_fut"
+CEILING_METRICS = (
+    "annual_fut_pct",
+    "production_mm3",
+    "effective_coverage_pct",
+    "effective_coverage_delta_pp",
+    "deficit_mm3",
+    "deficit_days",
+    "deficit_sum_mm3",
+)
 MEGA = 1_000_000.0
 CAP_FUT_PCT = 99.5
 CONFIDENCE = 0.95
@@ -281,10 +290,8 @@ def entity_rows(scenarios, section, column, metrics):
 
 def ceiling_rows(scenarios):
     reference = {row["run"]: row for row in scenarios[REFERENCE]["rows"]}
-    runs = zip(scenarios[CEILING]["rows"], scenarios[CEILING]["details"])
-    return [
+    runs = [
         {
-            "run": int(row["run"]),
             "ceiling_pct": float(row["fut_lock"]) * 100,
             "annual_fut_pct": float(row["annual_fut_pct"]),
             "production_mm3": float(row["annual_production_m3"]) / MEGA,
@@ -297,7 +304,15 @@ def ceiling_rows(scenarios):
             "deficit_days": details["daily"]["deficit_days"],
             "deficit_sum_mm3": details["daily"]["deficit_sum_mm3"],
         }
-        for row, details in sorted(runs, key=lambda pair: float(pair[0]["fut_lock"]))
+        for row, details in zip(scenarios[CEILING]["rows"], scenarios[CEILING]["details"])
+    ]
+    by_ceiling = defaultdict(list)
+    for run in runs:
+        by_ceiling[run["ceiling_pct"]].append(run)
+    return [
+        stats_row({"ceiling_pct": ceiling}, metric, "", [run[metric] for run in group])
+        for ceiling, group in sorted(by_ceiling.items())
+        for metric in CEILING_METRICS
     ]
 
 
@@ -502,30 +517,34 @@ def daily_section(scenarios):
 
 
 def ceiling_section(ceiling):
+    cells = {(row["ceiling_pct"], row["metric"]): row for row in ceiling}
+    ceilings = sorted({row["ceiling_pct"] for row in ceiling})
+    places = {"annual_fut_pct": 1, "deficit_days": 0, "deficit_sum_mm3": 3}
+
+    def cell(value, metric):
+        result = cells[(value, metric)]
+        digits = places.get(metric, 2)
+        return f"{fmt(result['mean'], digits)} ± {fmt(result['std'], digits)}"
+
     rows = [
         [
-            fmt(row["ceiling_pct"], 0),
-            fmt(row["annual_fut_pct"], 1),
-            fmt(row["production_mm3"]),
-            fmt(row["effective_coverage_pct"]),
-            fmt(row["effective_coverage_delta_pp"]),
-            fmt(row["deficit_mm3"]),
-            row["deficit_days"],
-            fmt(row["deficit_sum_mm3"], 3),
+            fmt(value, 0),
+            cells[(value, "annual_fut_pct")]["n"],
+            *(cell(value, metric) for metric in CEILING_METRICS),
         ]
-        for row in ceiling
+        for value in ceilings
     ]
     headers = [
-        "Teto (%)", "FUT (%)", "Produção (Mm³)", "Cobertura efetiva (%)", "Δ cobertura efetiva (p.p.)",
-        "Déficit nacional (Mm³)", "Dias com falta", "Falta diária somada (Mm³)",
+        "Teto (%)", "Execuções", "FUT (%)", "Produção (Mm³)", "Cobertura efetiva (%)",
+        "Δ cobertura efetiva (p.p.)", "Déficit nacional (Mm³)", "Dias com falta", "Falta diária somada (Mm³)",
     ]
     intro = [
         "## Mobilidade do FUT por teto",
         "",
-        f"Cada execução de `{CEILING}` tem um teto de FUT, então as execuções não são repetições e a média "
-        "da tabela anual mistura tetos diferentes. Aqui cada linha é uma execução. Δ é a cobertura efetiva "
-        "da execução menos a da execução de mesmo número da referência, que tem teto de 100% e as mesmas "
-        "taxas de falha.",
+        f"Em `{CEILING}`, cada bloco de execuções seguidas tem o mesmo teto de FUT, e a média da tabela anual "
+        "mistura tetos diferentes. Aqui cada linha junta as execuções de um teto. Média ± desvio padrão. Δ é a "
+        "cobertura efetiva da execução menos a da execução de mesmo número da referência, que tem teto de 100% e "
+        "os mesmos rendimentos e taxas de falha. O IC 95% de cada linha está em `scenario_ceiling.csv`.",
         "",
     ]
     return intro + table(headers, rows)
@@ -585,7 +604,7 @@ def report(study, scenarios, monthly, ceiling):
         f"# Análise da bateria `{study.name}`",
         "",
         *seed_line(scenarios),
-        "Cada cenário tem 10 execuções. Média ± desvio padrão (dp) resume as execuções. "
+        f"Cada cenário tem {len(scenarios[REFERENCE]['rows'])} execuções. Média ± desvio padrão (dp) resume as execuções. "
         "IC 95% é o intervalo de confiança de 95% da média, pela distribuição t de Student. "
         "Mm³ são milhões de m³ e p.p. são pontos percentuais.",
         "",

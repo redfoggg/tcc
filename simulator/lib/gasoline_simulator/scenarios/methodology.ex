@@ -8,12 +8,12 @@ defmodule GasolineSimulator.Scenarios.Methodology do
   alias GasolineSimulator.Scenarios.Seed
   alias GasolineSimulator.Scenarios.YieldSampling
 
-  @runs 10
+  @runs 100
+  @runs_per_ceiling 10
   @productive_count 4
   @outage_count 2
   @outage_months 3
   @blocked_roads 2
-  # The six roads that carry about 82% of convoy volume in the reference.
   @main_roads [
     {"REAM", "REPLAN"},
     {"REFMAT", "REPLAN"},
@@ -138,7 +138,7 @@ defmodule GasolineSimulator.Scenarios.Methodology do
 
     jobs
     |> Task.async_stream(&execute/1,
-      max_concurrency: length(jobs),
+      max_concurrency: System.schedulers_online(),
       ordered: true,
       timeout: :infinity
     )
@@ -222,7 +222,7 @@ defmodule GasolineSimulator.Scenarios.Methodology do
   end
 
   defp fut_limits(:mobile, run) do
-    ceiling = (78 + 2 * run) / 100
+    ceiling = (80 + 2 * div(run - 1, @runs_per_ceiling)) / 100
 
     %{
       burst: ceiling,
