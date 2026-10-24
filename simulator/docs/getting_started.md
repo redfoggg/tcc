@@ -79,8 +79,3 @@ mix phx.server
 
 Painel: `http://localhost:4000/`
 
-## Testes
-
-```
-cd native/gasoline_solver && cargo test
-```

@@ -207,141 +207,147 @@ python3 -m venv .venv
 .venv/bin/python data/scripts/analyze_study.py [data/studies/<pasta>]
 ```
 
-O script usa NumPy para as contas sobre os vetores de resultados e SciPy
-para o intervalo de confiança e o teste de Welch. As versões estão em
-`data/scripts/requirements.txt`, e o ambiente `.venv` fica fora do git.
-Sem argumento, o script usa a bateria mais recente de `data/studies`.
-Ele grava em `<pasta>/analysis/` um `report.md` com as tabelas abaixo e os
-CSVs com todos os números: `scenario_annual.csv`,
-`scenario_vs_reference.csv`, `scenario_daily.csv`,
-`scenario_monthly.csv`, `scenario_refineries.csv`,
-`scenario_regions.csv` e `scenario_ceiling.csv`.
+O script usa NumPy e SciPy, nas versões de `data/scripts/requirements.txt`.
+Ele lê `manifest.csv` e os CSVs de cada execução, sem modificá-los nem
+rodar novas simulações. Só os arquivos de `analysis/` são regenerados.
+`analysis_metadata.json` registra os parâmetros, as versões, os hashes
+SHA-256 dos dados de entrada e do código e a confirmação de que os dados
+permaneceram intactos durante a análise.
 
-Para cada cenário, o resumo das execuções que terminaram traz:
+Sem argumento, o script usa a bateria mais recente que contém um
+manifesto. As opções `--bootstrap-resamples` e `--bootstrap-seed` controlam
+a reamostragem (padrões: 9999 e 20261022). `--output <pasta>` permite
+revisar uma análise em outra pasta antes de substituir `analysis/`.
 
-| Medida | Significado |
-|---|---|
-| Média e desvio padrão (dp) | Valor típico e quanto as execuções se afastam dele |
-| Coeficiente de variação (CV) | Desvio padrão dividido pela média. Compara a dispersão de medidas em escalas diferentes |
-| Mínimo e máximo | Melhor e pior execução |
-| IC 95% | Intervalo de confiança de 95% da média, pela distribuição t de Student com $n-1$ graus de liberdade, onde $n$ é o número de execuções. Ver Como ler a estatística |
-| Δ contra a referência | Média do cenário menos média da referência. A diferença é marcada quando o valor p do teste t de Welch, que compara médias com variâncias diferentes, fica abaixo de 0,05. O CSV traz também o valor p e o intervalo de 95% da diferença. Ver Como ler a estatística |
+O relatório `report.md` é acompanhado de `scenario_annual.csv`,
+`scenario_vs_reference.csv`, `scenario_daily.csv`, `scenario_monthly.csv`,
+`scenario_refineries.csv`, `scenario_regions.csv`, `scenario_ceiling.csv`
+e `statistical_diagnostics.csv`. Campos vazios indicam valores não
+estimáveis; não representam zero. As médias e os desvios padrão
+continuam descrevendo os mesmos resultados brutos.
 
 ### Como ler a estatística
 
-**O problema.** Cada cenário roda 100 vezes, e cada execução dá um número
-diferente por causa dos sorteios. A média das 100 é uma estimativa, não o
-valor verdadeiro do cenário. Daí saem duas perguntas diferentes:
+**Unidade de análise.** Uma observação é uma execução completa do ano.
+Os dias e as refinarias de uma mesma execução não são tratados como
+repetições independentes. Cada cenário tem 100 execuções; em
+`mobilidade_fut` há dez condições diferentes, com 10 execuções por teto.
 
-| Pergunta | Ferramenta | No relatório |
-|---|---|---|
-| Quão precisa é a média? | Distribuição t de Student | Coluna IC 95% |
-| A diferença contra a referência é real ou sorte? | Teste t de Welch | Asterisco no Δ |
+**Média, dispersão e precisão.** O desvio padrão amostral usa $n-1$ no
+denominador. O erro padrão da média é $s/\sqrt{n}$. Para uma condição
+fixa, o intervalo individual de 95% pela distribuição t de Student é:
 
-**Ingredientes.** A média é a soma dividida por $n$. O desvio padrão
-mede quanto uma execução se afasta da média. Ele divide a soma dos
-quadrados por $n-1$, e não por $n$, porque os desvios são medidos contra
-a própria média da amostra, que fica mais perto dos dados do que a média
-verdadeira; dividir por $n$ subestimaria a dispersão. O erro padrão é a
-incerteza da média, e não de uma execução:
+$$
+\bar x \pm t_{0{,}975;\,n-1}\frac{s}{\sqrt n}
+$$
 
-$$\text{ep} = \frac{\text{dp}}{\sqrt{n}}$$
+Com 100 execuções, são 99 graus de liberdade e o multiplicador é
+aproximadamente 1,984; com 10 execuções por teto, são 9 graus de
+liberdade e multiplicador 2,262. Repetindo baterias independentes e
+construindo um intervalo em cada uma, o método busca conter a média
+verdadeira em aproximadamente 95% dos intervalos, sob suas hipóteses.
+O intervalo não é uma previsão para uma execução individual. Limites
+que ultrapassem o domínio físico são mantidos no CSV e devem ser
+interpretados junto com os diagnósticos, sem corte silencioso.
 
-Com 100 execuções, o erro padrão é um décimo do desvio padrão. A média
-de 100 execuções varia bem menos do que uma execução sozinha.
+**Comparação pareada contra a referência.** A execução de número $j$ de
+um cenário compartilha parte dos sorteios com a execução $j$ da
+referência. O analisador valida o número e a semente de cada par,
+rejeita duplicatas, pares ausentes, execuções com falha e dados não
+finitos. A ordem das linhas no manifesto não determina o pareamento.
 
-**Distribuição t de Student e IC 95%.** Se o desvio padrão verdadeiro
-fosse conhecido, bastaria a curva normal, com multiplicador 1,96. Mas
-ele também é estimado a partir das execuções, e pode sair menor do que
-o real. A curva t de Student cobre esse risco: tem caudas mais pesadas e
-alarga o intervalo. O tamanho do alargamento depende dos graus de
-liberdade, $n-1 = 99$ aqui. Com tantas execuções, a curva t já fica
-quase igual à normal. Multiplicador para 95%:
+Para cada medida, calcula-se uma diferença dentro de cada par:
 
-| Execuções | Graus de liberdade | Multiplicador $t$ |
-|---|---|---|
-| 5 | 4 | 2,78 |
-| 10 | 9 | 2,262 |
-| 30 | 29 | 2,05 |
-| 100 | 99 | 1,984 |
-| infinitas | infinitos | 1,96 |
+$$
+d_j = x_{\mathrm{cenário},j}-x_{\mathrm{referência},j},
+\qquad
+\Delta=\bar d,
+\qquad
+\mathrm{ep}_{\Delta}=\frac{s_d}{\sqrt n},
+\qquad
+t=\frac{\bar d}{s_d/\sqrt n}
+$$
 
-$$\text{IC} = \text{média} \pm t \times \text{ep}$$
+O teste t pareado é bilateral e testa média das diferenças igual a zero,
+com $n-1$ graus de liberdade. A inferência depende da independência entre
+pares; a relação dentro de cada par é incorporada pelo cálculo das
+diferenças. Esse método substitui Welch, que tratava os grupos como
+independentes. Não se seleciona o teste com base no p de normalidade.
 
-Leitura: se a bateria fosse repetida 100 vezes com sementes novas, cerca
-de 95 dos intervalos calculados conteriam a média verdadeira do cenário.
-O intervalo não sabe que a cobertura não passa de 100%. Um limite acima
-de 100 se lê como 100.
+**Comparações múltiplas.** A correção de Holm é aplicada a uma única
+família planejada: 7 cenários de condição fixa × 13 medidas e 10 tetos
+× 13 medidas, totalizando 221 comparações nesta bateria. A família
+inclui as medidas que não aparecem na tabela resumida do relatório.
+Comparações não estimáveis permanecem na contagem da família, mas não
+recebem p nem podem ser rejeitadas.
 
-Exemplo com a cobertura efetiva da referência na bateria
-`data/studies/20261022T182537Z`:
+Ordenam-se os valores p válidos do menor para o maior. Para o p na
+posição $k$ (começando em 1), o fator é $m-k+1$, com $m$ igual ao número
+planejado de comparações. O p ajustado é o máximo acumulado desses
+produtos, limitado a 1. O asterisco requer p ajustado menor que 0,05.
+Sob a validade dos testes individuais, Holm controla a probabilidade de
+uma ou mais rejeições falsas na família em até 5%, sem exigir
+independência entre testes. Isso não é a probabilidade de cada
+conclusão estar errada. Os ICs de 95% continuam individuais, sem
+cobertura simultânea de 95% para a família.
 
-| Passo | Valor |
-|---|---|
-| Média de 100 execuções | 99,082% |
-| dp | 0,284 p.p. |
-| ep $= 0{,}284 / \sqrt{100}$ | 0,028 p.p. |
-| $t$ com 99 graus de liberdade | 1,984 |
-| Meia largura $= 1{,}984 \times 0{,}028$ | 0,056 p.p. |
-| IC 95% | 99,03% a 99,14% |
+**Distribuição e sensibilidade.** O diagnóstico das medidas anuais,
+separado por condição, fica em `statistical_diagnostics.csv`. Inclui
+quantis, assimetria, curtose, Shapiro–Wilk, pontos fora das cercas de
+Tukey ($1{,}5\times\mathrm{IQR}$) e observações nos limites físicos de
+cobertura e FUT. Os mesmos diagnósticos, exceto limites físicos de
+nível, acompanham as diferenças em `scenario_vs_reference.csv`.
+Nenhum ponto extremo é removido.
 
-É o mesmo intervalo da coluna "IC 95% da efetiva" do `report.md`.
+Os alertas são exploratórios: `small_sample` para $n<30$,
+`strong_skew` para assimetria absoluta maior que 1,
+`shapiro_p_below_0.05` para p de Shapiro abaixo de 0,05,
+`tukey_outliers` para pontos fora das cercas e `boundary_mass` para
+observações nos limites. Esses limites são convenções de diagnóstico,
+não regras que garantem ou invalidam automaticamente o teste t.
+Os valores p de Shapiro não são testes de efeito e não entram em Holm.
 
-**Teste t de Welch e o asterisco.** O teste mede a diferença das médias
-em unidades de erro padrão. Os erros padrão dos dois grupos se somam em
-quadrado:
+Além do IC t, calculamos IC bootstrap BCa de 95% para as médias e para
+as médias das diferenças. O bootstrap reamostra execuções inteiras;
+para comparações, reamostra as diferenças dos pares, preservando o
+pareamento. A semente e a quantidade de reamostragens são registradas,
+e a mesma entrada produz os mesmos resultados. O IC BCa é uma análise
+de sensibilidade, não um substituto selecionado depois de olhar o p.
 
-$$\text{ep}_\text{dif} = \sqrt{\text{ep}_1^2 + \text{ep}_2^2} \qquad t = \frac{\text{diferença}}{\text{ep}_\text{dif}}$$
+O relatório sinaliza com † quando t e BCa discordam sobre a exclusão
+de zero ou quando BCa não é estimável. Concordância não comprova a
+validade de ambos; os dois dependem da representatividade da amostra.
+Com 10 pares por teto, mesmo o bootstrap não recupera informação que
+não foi observada. O p ajustado continua vindo do teste t pareado;
+o bootstrap não produz um segundo conjunto de asteriscos.
 
-Os graus de liberdade saem da fórmula de Welch–Satterthwaite:
+**Tetos de FUT.** A média e o desvio padrão agregados de
+`mobilidade_fut` são apenas descritivos. Misturam o efeito dos tetos e
+a variação dos sorteios; por isso não recebem IC ou teste agregado.
+A inferência é feita por teto, usando as suas 10 execuções e as 10
+execuções correspondentes da referência. As comparações por teto
+entram na mesma família de Holm das demais medidas anuais.
 
-$$\text{gl} = \frac{(\text{ep}_1^2 + \text{ep}_2^2)^2}{\dfrac{\text{ep}_1^4}{n_1 - 1} + \dfrac{\text{ep}_2^4}{n_2 - 1}}$$
+**Amostras constantes.** Se a amostra ou as diferenças pareadas não
+apresentam variação distinguível da precisão numérica, o script
+preserva média, desvio padrão, mínimo e máximo, mas deixa ICs, t e p
+vazios e informa o motivo em `inference_status`. Não atribui p zero ou
+um nem interpreta IC pontual como certeza. Uma amostra constante não
+demonstra determinismo do modelo nem equivalência entre cenários.
 
-Com dois grupos de 100 que variam igual, ela dá 198. Quando um grupo
-varia muito mais do que o outro, ela cai para perto de 99, porque quase
-toda a incerteza vem de um grupo só. Menos graus de liberdade tornam o teste
-mais exigente.
+**Limites da conclusão.** O tamanho do efeito e seus intervalos devem
+acompanhar o asterisco. A ausência de significância não demonstra
+igualdade. Os diagnósticos tornam visíveis as condições de uso, sem
+transformar aproximações em garantias. Mais execuções não corrigem
+premissas inadequadas nem quantificam automaticamente a incerteza dos
+dados históricos e da estrutura do modelo.
 
-O valor p é a chance de ver uma diferença deste tamanho, ou maior, se o
-cenário não mudasse nada. Abaixo de 0,05, a diferença ganha o asterisco.
-
-Por que Welch e não o teste t de Student clássico: o clássico supõe que
-os dois grupos variam igual. Aqui isso é falso. Na cobertura efetiva, o
-dp de demanda_mensal é 1,30 p.p., e o da referência é 0,28 p.p.
-
-Exemplo, cobertura efetiva de demanda_mensal contra a referência:
-
-| Passo | Valor |
-|---|---|
-| Média de demanda_mensal | 94,538% (dp 1,296, ep 0,130) |
-| Média da referência | 99,082% (dp 0,284, ep 0,028) |
-| Diferença | -4,54 p.p. |
-| ep da diferença $= \sqrt{0{,}130^2 + 0{,}028^2}$ | 0,133 p.p. |
-| $t = -4{,}54 / 0{,}133$ | -34,2 |
-| Graus de liberdade | 108,5 |
-| Valor p | $5{,}4 \times 10^{-60}$ |
-
-A diferença é 34 erros padrão, e o relatório mostra -4,54 *.
-
-**Cuidados.**
-
-- Significativo não quer dizer importante. O asterisco diz que a
-  diferença não é sorte, não que ela é grande. Leia sempre o tamanho do
-  Δ junto com o asterisco. Com 100 execuções, até diferenças de poucos
-  décimos de ponto percentual ganham asterisco, então o tamanho do Δ é
-  a leitura principal.
-- `scenario_vs_reference.csv` faz 104 testes (8 cenários × 13
-  medidas), sem correção para comparações múltiplas. A tabela do
-  `report.md` mostra só 5 medidas por cenário, mas os outros testes
-  existem. Com 5% de chance de erro em cada um, mesmo que nenhum cenário
-  mudasse nada, uns 5 dos 104 sairiam com asterisco por acaso.
-  Resultados com p perto de 0,05 pedem cautela. Efeitos grandes, como o
-  do exemplo, não são afetados.
-- O teste trata as execuções como independentes. Mas a execução $n$ de
-  cada cenário usa os mesmos rendimentos e taxas de falha da execução
-  $n$ da referência. Esse pareamento reduz o ruído real da diferença, e
-  o teste não aproveita isso. Ele fica conservador: pode deixar de marcar
-  uma diferença pequena, mas não invalida os asteriscos que já estão lá.
+Referências dos métodos: [IC da média, NIST](https://www.itl.nist.gov/div898/handbook/eda/section3/eda352.htm),
+[teste pareado, SciPy](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.ttest_rel.html),
+[bootstrap BCa, SciPy](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.bootstrap.html),
+[Shapiro–Wilk, SciPy](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html)
+e [correção de Holm, statsmodels](https://www.statsmodels.org/stable/generated/statsmodels.stats.multitest.multipletests.html).
+A implementação usa NumPy e SciPy; não adiciona dependência de statsmodels.
 
 O relatório tem estas seções:
 
@@ -349,9 +355,8 @@ O relatório tem estas seções:
   95%, déficit, produção, FUT e perdas. As duas coberturas estão em
   `docs/model_specification.md`, seção Indicadores do painel.
 - **Efeito contra a referência:** quanto cada choque muda as duas
-  coberturas, o déficit, a produção e o FUT. No cenário 9 essa linha
-  é a média de dez tetos diferentes. O efeito do teto se lê como curva,
-  execução a execução, como descrito na seção do cenário.
+  coberturas, o déficit, a produção e o FUT, com teste pareado e Holm.
+  No cenário 9, cada teto tem sua própria linha e seus pares de referência.
 - **Referência contra o Histórico 2025:** produção, demanda, saldo e FUT.
 - **Cobertura do Histórico 2025 com as mesmas simplificações:** a
   cobertura nacional do Histórico, produção observada sobre a demanda, e
@@ -377,14 +382,14 @@ O relatório tem estas seções:
   | | IC 95% da simulação | Intervalo do Histórico |
   |---|---|---|
   | Origem da incerteza | Variação dos sorteios entre as execuções | Falta de dado sobre o transporte entre regiões |
-  | Significado | A média provavelmente está nessa faixa | O valor real está garantidamente nessa faixa |
+  | Significado | Procedimento com cobertura nominal de 95% para a média | O valor real está garantidamente nessa faixa |
   | Diminui com mais execuções | Sim | Não, só com dados de transporte |
 - **Fechamento diário:** dias com falta, maior falta diária, falta no
   percentil 95 (o valor que 95% dos dias não ultrapassam), maior
   sequência de dias seguidos com falta e falta diária somada. Mostra
   quando a gasolina não estava na região certa, mesmo com o ano coberto.
-- **Mobilidade do FUT por teto:** uma linha por execução do cenário 9,
-  em ordem de teto: FUT, produção, cobertura efetiva, diferença contra a
+- **Mobilidade do FUT por teto:** uma linha por teto do cenário 9,
+  resumindo as suas 10 execuções: FUT, produção, cobertura efetiva, diferença contra a
   execução de mesmo número da referência, déficit, dias com falta e falta
   diária somada. Os mesmos números ficam em `scenario_ceiling.csv`.
 - **FUT mensal:** média de cada mês, para ver em que época o parque

@@ -171,7 +171,7 @@ possível de 2025. O `mobilidade_fut` fica fora desta tabela porque a
 média dele mistura tetos diferentes (linha 3).
 
 `rotas_bloqueadas` tira 0,30 p.p. da cobertura efetiva, com asterisco
-(p < 0,001). O efeito é pequeno no ano porque o bloqueio dura 2 meses e
+(p ajustado por Holm de aproximadamente $3{,}32\times10^{-8}$, no teste t pareado). O efeito é pequeno no ano porque o bloqueio dura 2 meses e
 o comboio segue para o próximo destino, mas existe.
 
 Frase de exemplo: "Mesmo sob choques de demanda, paradas de refinarias
@@ -221,19 +221,38 @@ parte da demanda (fonte)."
 ## Cuidados de leitura estatística
 
 A explicação completa está em `docs/methodology.md`, seção Como ler a
-estatística.
+estatística. A reanálise usa as mesmas 900 execuções, sem modificar o
+manifesto nem os CSVs de simulação; as médias permanecem as mesmas.
 
-- **Significativo não é importante.** O asterisco diz que a diferença
-  provavelmente não é ruído, não que ela é grande. Cite sempre o Δ ao
-  lado do asterisco. Com 100 execuções, quase todo efeito ganha
-  asterisco. O −0,30 p.p. de `rotas_bloqueadas` é um exemplo.
-- **Muitos testes sem correção.** `analysis/scenario_vs_reference.csv`
-  tem 104 testes (8 cenários × 13 medidas), e o `report.md` mostra só 5
-  medidas por cenário. Todos usam o limite de 5% sem correção para
-  comparações múltiplas. Mesmo sem efeito real, uns 5 dos 104 ganhariam
-  asterisco por acaso, e resultados com p perto de 0,05 pedem cautela.
-- **As execuções não são independentes da referência.** O teste de
-  Welch trata cenário e referência como amostras independentes, mas a
-  execução $n$ de cada cenário compartilha rendimento e taxas de falha
-  com a execução $n$ da referência. Isso deixa o teste conservador: um
-  teste pareado acharia diferenças com mais facilidade.
+- **Pareamento incorporado.** Os testes usam diferenças entre execuções
+  de mesmo número e semente. A dispersão relevante é a dessas diferenças,
+  calculada pelo teste t pareado; Welch foi substituído.
+- **Correção para múltiplas comparações.** O asterisco exige p ajustado
+  por Holm menor que 0,05, numa família única de 221 comparações
+  planejadas: 7 cenários × 13 medidas e 10 tetos × 13 medidas. ICs de
+  95% são individuais e não simultâneos.
+- **Distribuições examinadas.** Os CSVs registram Shapiro–Wilk,
+  assimetria, curtose, quantis, extremos e observações nos limites. O
+  relatório compara IC t e bootstrap BCa, sem remover observações nem
+  selecionar um teste pelo p de normalidade. As 17 comparações de
+  cobertura efetiva concordam sobre a exclusão de zero entre os ICs t e
+  BCa; há três divergências entre outras medidas, expostas no relatório.
+  A concordância é uma verificação de sensibilidade, não uma prova das
+  hipóteses estatísticas.
+- **FUT separado por condição.** O agregado de `mobilidade_fut` é
+  descritivo, sem IC ou teste. Há 10 execuções por teto, não 100 por
+  teto. No teto de 98%, a diferença média de cobertura efetiva é
+  −0,41 p.p.; o IC individual exclui zero, mas o p ajustado é
+  aproximadamente 0,091, sem asterisco. Isso não demonstra equivalência.
+- **Constância não vira certeza.** Das 221 comparações, 32 ficam sem
+  inferência por diferenças constantes. Os respectivos t, p e ICs ficam
+  vazios; não se atribui p zero ou um. Médias, desvios e amplitudes
+  permanecem disponíveis como descrição da amostra.
+- **Significativo não é importante.** `rotas_bloqueadas` mantém uma
+  redução média de apenas 0,30 p.p. na cobertura efetiva, mesmo com p
+  ajustado muito pequeno. O tamanho do efeito é a medida de relevância
+  prática; o asterisco acrescenta evidência estatística.
+- **Amostra e modelo continuam limitando a conclusão.** Os grupos por
+  teto continuam pequenos. Mais execuções, diagnósticos e bootstrap não
+  validam automaticamente as premissas do modelo nem incorporam todos
+  os erros das fontes históricas.

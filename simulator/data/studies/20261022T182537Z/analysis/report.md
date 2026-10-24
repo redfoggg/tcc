@@ -2,11 +2,11 @@
 
 Semente `657716052`. Rodar a bateria com a mesma semente reproduz estes números.
 
-Cada cenário tem 100 execuções. Média ± desvio padrão (dp) resume as execuções. IC 95% é o intervalo de confiança de 95% da média, pela distribuição t de Student. Mm³ são milhões de m³ e p.p. são pontos percentuais.
+Cada cenário tem 100 execuções. Média ± desvio padrão (dp) resume as execuções. IC 95% é o intervalo individual da média pela distribuição t de Student; o bootstrap BCa é registrado como análise de sensibilidade. Amostras constantes ficam sem inferência. Mm³ são milhões de m³ e p.p. são pontos percentuais.
 
 ## Resultado anual por cenário
 
-Média ± desvio padrão das execuções. A cobertura nacional compara a produção do ano, menos as perdas no transporte, com a demanda do país. A cobertura efetiva soma o que cada região teve no ano (refinação própria e chegadas, menos o que enviou), até a demanda dela, e divide pela demanda do país. Gasolina parada numa região não cobre outra.
+Média ± desvio padrão das execuções. A cobertura nacional compara a produção do ano, menos as perdas no transporte, com a demanda do país. A cobertura efetiva soma o que cada região teve no ano (refinação própria e chegadas, menos o que enviou), até a demanda dela, e divide pela demanda do país. Gasolina parada numa região não cobre outra. A linha mobilidade_fut é apenas descritiva: mistura tetos e não recebe IC agregado.
 
 | Cenário | Execuções | Cobertura nacional (%) | Cobertura efetiva (%) | IC 95% da efetiva | Déficit nacional (Mm³) | Produção (Mm³) | FUT (%) | Perdas (Mm³) |
 |---|---|---|---|---|---|---|---|---|
@@ -18,13 +18,17 @@ Média ± desvio padrão das execuções. A cobertura nacional compara a produç
 | manutencao_escalonada | 100 | 91,14 ± 0,55 | 91,09 ± 0,54 | 90,98 a 91,20 | 2,96 ± 0,18 | 30,60 ± 0,19 | 99,2 ± 0,5 | 0,115 ± 0,021 |
 | falha_alta_remessa | 100 | 98,52 ± 0,25 | 83,06 ± 0,16 | 83,02 a 83,09 | 0,50 ± 0,08 | 32,96 ± 0,08 | 97,5 ± 0,1 | 0,013 ± 0,003 |
 | rotas_bloqueadas | 100 | 98,92 ± 0,31 | 98,79 ± 0,41 | 98,70 a 98,87 | 0,36 ± 0,10 | 33,24 ± 0,10 | 98,1 ± 0,3 | 0,155 ± 0,032 |
-| mobilidade_fut | 100 | 89,89 ± 5,81 | 89,86 ± 5,80 | 88,71 a 91,01 | 3,38 ± 1,94 | 30,16 ± 1,98 | 89,0 ± 5,7 | 0,097 ± 0,043 |
+| mobilidade_fut | 100 | 89,89 ± 5,81 | 89,86 ± 5,80 | — | 3,38 ± 1,94 | 30,16 ± 1,98 | 89,0 ± 5,7 | 0,097 ± 0,043 |
 
 ## Efeito contra a referência
 
-Δ é a média do cenário menos a média da referência. O asterisco marca p < 0,05 no teste t de Welch, que compara médias com variâncias diferentes. O valor p e o intervalo de 95% da diferença estão em `scenario_vs_reference.csv`.
+Δ é a média das diferenças entre execuções de mesmo número e semente. Cada teto de FUT é comparado apenas com suas execuções correspondentes da referência. O teste principal é t pareado bilateral, sem seleção de método pelo diagnóstico de normalidade.
 
-| Cenário | Δ cobertura nacional (p.p.) | Δ cobertura efetiva (p.p.) | Δ déficit nacional (Mm³) | Δ produção (Mm³) | Δ FUT (p.p.) |
+O asterisco marca p ajustado por Holm < 0,05 numa família única de 221 comparações planejadas (todas as 13 medidas, incluindo cada teto). NI indica inferência não estimável, inclusive diferenças constantes; nesses casos o p fica vazio. † indica discordância sobre a exclusão de zero entre os ICs t e bootstrap, ou bootstrap não estimável. O asterisco não mede importância prática e não substitui os diagnósticos.
+
+Os valores p brutos e ajustados, IC t, IC bootstrap BCa e diagnósticos das diferenças estão em `scenario_vs_reference.csv`. Os ICs são individuais de 95%, não simultâneos; Holm ajusta as decisões dos testes, sem transformar esses intervalos em ICs conjuntos.
+
+| Cenário / teto | Δ cobertura nacional (p.p.) | Δ cobertura efetiva (p.p.) | Δ déficit nacional (Mm³) | Δ produção (Mm³) | Δ FUT (p.p.) |
 |---|---|---|---|---|---|
 | rendimento_minimo | -15,90 * | -15,85 * | 5,32 * | -5,41 * | 1,6 * |
 | paradas_produtivas | -6,78 * | -6,76 * | 2,27 * | -2,29 * | 0,4 * |
@@ -33,7 +37,52 @@ Média ± desvio padrão das execuções. A cobertura nacional compara a produç
 | manutencao_escalonada | -8,02 * | -7,99 * | 2,68 * | -2,72 * | 0,8 * |
 | falha_alta_remessa | -0,65 * | -16,03 * | 0,22 * | -0,36 * | -0,9 * |
 | rotas_bloqueadas | -0,24 * | -0,30 * | 0,08 * | -0,08 * | -0,2 * |
-| mobilidade_fut | -9,27 * | -9,22 * | 3,10 * | -3,16 * | -9,4 * |
+| mobilidade_fut — teto 80% | -18,33 * | -18,27 * | 6,13 * | -6,24 * | -18,3 * |
+| mobilidade_fut — teto 82% | -16,51 * | -16,46 * | 5,52 * | -5,63 * | -16,5 * |
+| mobilidade_fut — teto 84% | -14,40 * | -14,35 * | 4,82 * | -4,91 * | -14,4 * |
+| mobilidade_fut — teto 86% | -12,20 * | -12,15 * | 4,08 * | -4,17 * | -12,3 * |
+| mobilidade_fut — teto 88% | -10,13 * | -10,08 * | 3,39 * | -3,46 * | -10,3 * |
+| mobilidade_fut — teto 90% | -8,10 * | -8,00 * | 2,71 * | -2,76 * | -8,2 * |
+| mobilidade_fut — teto 92% | -6,25 * | -6,21 * | 2,09 * | -2,13 * | -6,4 * |
+| mobilidade_fut — teto 94% | -4,20 * | -4,16 * | 1,40 * | -1,43 * | -4,4 * |
+| mobilidade_fut — teto 96% | -2,19 * | -2,15 * | 0,73 * | -0,74 * | -2,4 * |
+| mobilidade_fut — teto 98% | -0,38 * | -0,41 | 0,13 * | -0,13 * | -0,6 * |
+
+## Diagnósticos e sensibilidade da cobertura efetiva
+
+A tabela examina as diferenças pareadas, que são a amostra relevante para o teste. Os diagnósticos de cada cenário e teto estão em `statistical_diagnostics.csv`, incluindo assimetria, curtose, Shapiro–Wilk, quantis, pontos fora de 1,5 IQR e contagens nos limites 0% e 100%. Pontos extremos são mantidos; nenhuma execução é removida.
+
+As flags são alertas exploratórios: small_sample = n < 30; strong_skew = |assimetria| > 1; shapiro_p_below_0.05 = evidência contra normalidade; tukey_outliers = pontos fora de 1,5 IQR; boundary_mass = observações no limite. Shapiro não aprova nem reprova automaticamente a inferência, e seus p não são testes de efeito ajustados por Holm.
+
+A sensibilidade usa 9999 reamostragens BCa da média das diferenças, com semente 20261022. Cada reamostragem mantém o par cenário/referência. Concordância significa que os dois ICs excluem zero na mesma direção ou ambos contêm zero; não garante validade. Com 10 pares por teto, a inferência continua limitada pela amostra pequena. Bootstrap também depende de representatividade dos dados e independência entre pares.
+
+| Cenário / teto | Pares | Δ (p.p.) | IC t 95% | IC BCa 95% | p Holm | Alertas das diferenças | ICs concordam? |
+|---|---|---|---|---|---|---|---|
+| rendimento_minimo | 100 | -15,85 | -15,91 a -15,80 | -15,90 a -15,80 | 1.65e-174 | shapiro_p_below_0.05;strong_skew;tukey_outliers | sim |
+| paradas_produtivas | 100 | -6,76 | -6,97 a -6,55 | -6,96 a -6,56 | 2.17e-80 | shapiro_p_below_0.05 | sim |
+| choque_demanda | 100 | -11,03 | -11,11 a -10,96 | -11,10 a -10,96 | 2.1e-147 | shapiro_p_below_0.05;tukey_outliers | sim |
+| demanda_mensal | 100 | -4,54 | -4,81 a -4,28 | -4,79 a -4,27 | 3.32e-54 | tukey_outliers | sim |
+| manutencao_escalonada | 100 | -7,99 | -8,11 a -7,87 | -8,11 a -7,87 | 4.9e-110 | tukey_outliers | sim |
+| falha_alta_remessa | 100 | -16,03 | -16,09 a -15,96 | -16,09 a -15,95 | 9.34e-165 | shapiro_p_below_0.05;strong_skew;tukey_outliers | sim |
+| rotas_bloqueadas | 100 | -0,30 | -0,38 a -0,21 | -0,38 a -0,22 | 3.32e-08 | shapiro_p_below_0.05;strong_skew;tukey_outliers | sim |
+| mobilidade_fut — teto 80% | 10 | -18,27 | -18,56 a -17,98 | -18,47 a -17,97 | 3.11e-14 | small_sample;strong_skew;tukey_outliers | sim |
+| mobilidade_fut — teto 82% | 10 | -16,46 | -16,65 a -16,27 | -16,65 a -16,32 | 2.16e-15 | small_sample | sim |
+| mobilidade_fut — teto 84% | 10 | -14,35 | -14,60 a -14,11 | -14,53 a -14,11 | 5.51e-14 | small_sample;tukey_outliers | sim |
+| mobilidade_fut — teto 86% | 10 | -12,15 | -12,37 a -11,93 | -12,31 a -11,96 | 7.73e-14 | small_sample;tukey_outliers | sim |
+| mobilidade_fut — teto 88% | 10 | -10,08 | -10,22 a -9,95 | -10,19 a -9,97 | 6e-15 | small_sample | sim |
+| mobilidade_fut — teto 90% | 10 | -8,00 | -8,39 a -7,61 | -8,24 a -7,55 | 4.82e-10 | small_sample;shapiro_p_below_0.05;strong_skew;tukey_outliers | sim |
+| mobilidade_fut — teto 92% | 10 | -6,21 | -6,42 a -5,99 | -6,39 a -6,04 | 2.39e-11 | small_sample | sim |
+| mobilidade_fut — teto 94% | 10 | -4,16 | -4,41 a -3,90 | -4,38 a -3,95 | 3.54e-09 | small_sample;tukey_outliers | sim |
+| mobilidade_fut — teto 96% | 10 | -2,15 | -2,47 a -1,84 | -2,36 a -1,82 | 6.49e-06 | small_sample;shapiro_p_below_0.05;strong_skew;tukey_outliers | sim |
+| mobilidade_fut — teto 98% | 10 | -0,41 | -0,63 a -0,20 | -0,60 a -0,25 | 0.0905 | small_sample;tukey_outliers | sim |
+
+Das 221 comparações planejadas, 32 ficam sem inferência. Há 3 alertas de sensibilidade no conjunto completo das medidas. Constância na amostra não demonstra determinismo nem equivalência entre cenários.
+
+| Comparação com alerta | Medida | IC t 95% | IC BCa 95% | p Holm |
+|---|---|---|---|---|
+| rotas_bloqueadas | Cobertura efetiva Nordeste | -0,89 a 0,01 | -0,91 a -0,03 | 1 |
+| mobilidade_fut — teto 82% | Estoque no fim do ano | -0,04 a 0,01 | -0,06 a -0,00 | 1 |
+| mobilidade_fut — teto 94% | Estoque no fim do ano | -0,05 a 0,00 | -0,05 a -0,01 | 1 |
 
 ## Referência contra o Histórico 2025
 
