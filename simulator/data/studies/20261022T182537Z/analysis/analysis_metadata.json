@@ -912,12 +912,9 @@
   "estimable_tests": 189,
   "ci_scope": "pointwise, not simultaneous",
   "code_sha256": {
-    "analyze_study.py": "38654ba1fa2a5096b8d59b8db48c4e9aa6d1c07e8cc49bb1d41970b9eecb4837",
-    "study_statistics.py": "dd17ce336aca48feaa05721d2f46b8f64ae51f7cd6305e791f1792aaf65b1a68"
+    "analyze_study.py": "1cb01c83bffe003981c6e6dd676cb1a3b43edc34562930d81b2b00d62dd44afa",
+    "study_statistics.py": "30cdfb0475f2a40bc2d2ea59b0936e2ba77bfe625d0bb119fdf19eb29b1dbe96"
   },
-  "bootstrap_method": "BCa",
-  "bootstrap_resamples": 9999,
-  "bootstrap_seed": 20261022,
   "python": "3.14.7",
   "numpy": "2.5.4",
   "scipy": "1.18.1"

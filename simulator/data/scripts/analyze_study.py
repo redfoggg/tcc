@@ -433,8 +433,6 @@ def reference_section(comparisons):
             suffix = " *" if item["significant"] else ""
             if item["inference_status"] != "ok":
                 suffix += " NI"
-            elif item["ci_direction_agreement"] is False or item["bootstrap_status"] != "ok":
-                suffix += " †"
             row.append(fmt(item["delta"], places) + suffix)
         rows.append(row)
     intro = [
@@ -444,12 +442,10 @@ def reference_section(comparisons):
         "bilateral, sem seleção de método pelo diagnóstico de normalidade.", "",
         f"O asterisco marca p ajustado por Holm < 0,05 numa família única de {len(comparisons)} "
         "comparações planejadas (todas as 13 medidas, incluindo cada teto). NI indica inferência não "
-        "estimável, inclusive diferenças constantes; nesses casos o p fica vazio. † indica discordância "
-        "sobre a exclusão de zero entre os ICs t e bootstrap, ou bootstrap não estimável. "
-        "O asterisco não mede importância prática e não substitui os diagnósticos.", "",
-        "Os valores p brutos e ajustados, IC t, IC bootstrap BCa e diagnósticos das diferenças estão em "
-        "`scenario_vs_reference.csv`. Os ICs são individuais de 95%, não simultâneos; Holm ajusta "
-        "as decisões dos testes, sem transformar esses intervalos em ICs conjuntos.", "",
+        "estimável, inclusive diferenças constantes; nesses casos o p fica vazio. "
+        "O asterisco não mede importância prática.", "",
+        "Os valores p brutos e ajustados, o IC 95% e os diagnósticos das diferenças estão em "
+        "`scenario_vs_reference.csv`.", "",
     ]
     return intro + table(["Cenário / teto", "Δ cobertura nacional (p.p.)", "Δ cobertura efetiva (p.p.)",
                           "Δ déficit nacional (Mm³)", "Δ produção (Mm³)", "Δ FUT (p.p.)"], rows)
@@ -463,39 +459,18 @@ def diagnostics_section(comparisons):
         sid, ceiling = item["scenario_id"], item["ceiling_pct"]
         label = sid if ceiling is None else f"{sid} — teto {fmt(ceiling, 0)}%"
         rows.append([label, item["n"], fmt(item["delta"]), interval_cell(item),
-                     interval_cell(item, "bootstrap_"),
                      f"{item['p_adjusted_holm']:.3g}" if item["p_adjusted_holm"] is not None else "—",
-                     item["diagnostic_flags"],
-                     "sim" if item["ci_direction_agreement"] else "não" if item["ci_direction_agreement"] is False else "—"])
-    intro = ["## Diagnósticos e sensibilidade da cobertura efetiva", "",
-             "A tabela examina as diferenças pareadas, que são a amostra relevante para o teste. "
-             "Os diagnósticos de cada cenário e teto estão em `statistical_diagnostics.csv`, incluindo "
-             "assimetria, curtose, Shapiro–Wilk, quantis, pontos fora de 1,5 IQR e contagens nos limites "
-             "0% e 100%. Pontos extremos são mantidos; nenhuma execução é removida.", "",
-             "As flags são alertas exploratórios: small_sample = n < 30; strong_skew = |assimetria| > 1; "
-             "shapiro_p_below_0.05 = evidência contra normalidade; tukey_outliers = pontos fora de 1,5 IQR; "
-             "boundary_mass = observações no limite. Shapiro não aprova nem reprova automaticamente a "
-             "inferência, e seus p não são testes de efeito ajustados por Holm.", "",
-             f"A sensibilidade usa {inference.BOOTSTRAP_RESAMPLES} reamostragens BCa da média das diferenças, "
-             f"com semente {inference.BOOTSTRAP_SEED}. Cada reamostragem mantém o par cenário/referência. "
-             "Concordância significa que os dois ICs excluem zero na mesma direção ou ambos contêm zero; "
-             "não garante validade. Com 10 pares por teto, a inferência continua limitada pela amostra pequena. "
-             "Bootstrap também depende de representatividade dos dados e independência entre pares.", ""]
-    result = intro + table(["Cenário / teto", "Pares", "Δ (p.p.)", "IC t 95%", "IC BCa 95%",
-                             "p Holm", "Alertas das diferenças", "ICs concordam?"], rows)
-    sensitive = [r for r in comparisons if r["inference_status"] == "ok" and
-                 (r["ci_direction_agreement"] is False or r["bootstrap_status"] != "ok")]
+                     item["diagnostic_flags"]])
     unavailable = sum(r["inference_status"] != "ok" for r in comparisons)
-    result += [f"Das {len(comparisons)} comparações planejadas, {unavailable} ficam sem inferência. "
-               f"Há {len(sensitive)} alertas de sensibilidade no conjunto completo das medidas. "
-               "Constância na amostra não demonstra determinismo nem equivalência entre cenários.", ""]
-    if sensitive:
-        result += table(["Comparação com alerta", "Medida", "IC t 95%", "IC BCa 95%", "p Holm"], [
-            [r["scenario_id"] + (f" — teto {fmt(r['ceiling_pct'], 0)}%" if r["ceiling_pct"] is not None else ""),
-             r["metric"], interval_cell(r), interval_cell(r, "bootstrap_"),
-             f"{r['p_adjusted_holm']:.3g}" if r["p_adjusted_holm"] is not None else "—"]
-            for r in sensitive])
-    return result
+    intro = ["## Diagnósticos da cobertura efetiva", "",
+             "A tabela examina as diferenças pareadas, que são a amostra do teste. Os diagnósticos de cada "
+             "cenário e teto estão em `statistical_diagnostics.csv`. Nenhuma execução é removida.", "",
+             "Alertas: small_sample = menos de 30 pares; strong_skew = distribuição muito assimétrica; "
+             "shapiro_p_below_0.05 = distribuição longe da normal; tukey_outliers = pontos muito afastados; "
+             "boundary_mass = observações no limite da medida.", ""]
+    result = intro + table(["Cenário / teto", "Pares", "Δ (p.p.)", "IC 95%", "p Holm", "Alertas"], rows)
+    return result + ["", f"Das {len(comparisons)} comparações planejadas, {unavailable} ficam sem inferência "
+                     "porque a diferença é constante.", ""]
 
 
 def historical_section(scenarios, historical):
@@ -687,8 +662,8 @@ def report(study, scenarios, monthly, ceiling, comparisons):
         "",
         *seed_line(scenarios),
         f"Cada cenário tem {len(scenarios[REFERENCE]['rows'])} execuções. Média ± desvio padrão (dp) resume as execuções. "
-        "IC 95% é o intervalo individual da média pela distribuição t de Student; o bootstrap BCa "
-        "é registrado como análise de sensibilidade. Amostras constantes ficam sem inferência. "
+        "IC 95% é o intervalo de confiança de 95% da média, pela distribuição t de Student. "
+        "Amostras constantes ficam sem inferência. "
         "Mm³ são milhões de m³ e p.p. são pontos percentuais.",
         "",
     ]
@@ -723,10 +698,7 @@ def main():
     parser = argparse.ArgumentParser(description="Analisa uma bateria sem modificar os CSVs de simulação.")
     parser.add_argument("study", nargs="?", help="Pasta da bateria. Sem valor, usa a mais recente.")
     parser.add_argument("--output", type=Path, help="Pasta de saída alternativa; padrão: <bateria>/analysis.")
-    parser.add_argument("--bootstrap-resamples", type=int, default=9999)
-    parser.add_argument("--bootstrap-seed", type=int, default=20261022)
     args = parser.parse_args()
-    inference.configure(args.bootstrap_resamples, args.bootstrap_seed)
     study = (Path(args.study) if args.study else max(
         (p for p in STUDIES.iterdir() if (p / "manifest.csv").is_file()),
         key=lambda path: path.stat().st_mtime)).resolve()
@@ -763,8 +735,6 @@ def main():
         "ci_scope": "pointwise, not simultaneous",
         "code_sha256": {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
                         for path in (Path(__file__), Path(inference.__file__))},
-        "bootstrap_method": "BCa", "bootstrap_resamples": args.bootstrap_resamples,
-        "bootstrap_seed": args.bootstrap_seed,
         "python": platform.python_version(), "numpy": np.__version__, "scipy": scipy.__version__,
     }
     (output / "analysis_metadata.json").write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

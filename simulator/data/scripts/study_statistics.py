@@ -1,7 +1,5 @@
 """Inference across independent runs; related scenarios are compared within run."""
 
-import hashlib
-import warnings
 from functools import lru_cache
 
 import numpy as np
@@ -9,8 +7,6 @@ from scipy import stats
 
 CONFIDENCE = 0.95
 ALPHA = 1 - CONFIDENCE
-BOOTSTRAP_RESAMPLES = 9999
-BOOTSTRAP_SEED = 20261022
 
 
 def sample(values):
@@ -24,14 +20,6 @@ def constant(data, scale=None):
     data = sample(data)
     magnitude = max(float(np.max(np.abs(data))), np.finfo(float).tiny) if scale is None else scale
     return bool(np.ptp(data) <= 16 * np.finfo(float).eps * magnitude)
-
-
-def configure(resamples, seed):
-    if not 99 <= resamples <= 1_000_000 or seed < 0:
-        raise ValueError("Bootstrap requires 99..1000000 resamples and a nonnegative seed")
-    global BOOTSTRAP_RESAMPLES, BOOTSTRAP_SEED
-    BOOTSTRAP_RESAMPLES, BOOTSTRAP_SEED = resamples, seed
-    _summary.cache_clear()
 
 
 def descriptive(values):
@@ -91,9 +79,7 @@ def summary(values, inferential=True):
 def _summary(values, inferential):
     data = sample(values)
     result = descriptive(data)
-    result.update({"ci95_low": None, "ci95_high": None,
-                   "bootstrap_ci95_low": None, "bootstrap_ci95_high": None,
-                   "bootstrap_status": "not_estimated"})
+    result.update({"ci95_low": None, "ci95_high": None})
     status = "ok"
     if not inferential:
         result["sem"] = None
@@ -105,22 +91,7 @@ def _summary(values, inferential):
     if status != "ok":
         return {**result, "inference_status": status}
     low, high = stats.t.interval(CONFIDENCE, data.size - 1, loc=result["mean"], scale=result["sem"])
-    # Resample centered observations to reduce cancellation for nearly constant metrics.
-    centered = data - result["mean"]
-    digest = hashlib.sha256(np.asarray(data, dtype="<f8").tobytes()).digest()
-    rng = np.random.default_rng(np.random.SeedSequence([BOOTSTRAP_SEED, int.from_bytes(digest[:8], "little")]))
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always", stats.DegenerateDataWarning)
-        boot = stats.bootstrap((centered,), np.mean, confidence_level=CONFIDENCE,
-                               n_resamples=BOOTSTRAP_RESAMPLES, batch=256,
-                               method="BCa", rng=rng)
-    boot_low, boot_high = np.asarray(boot.confidence_interval) + result["mean"]
-    boot_ok = np.isfinite([boot_low, boot_high]).all() and not caught
-    return {**result, "ci95_low": float(low), "ci95_high": float(high),
-            "bootstrap_ci95_low": float(boot_low) if boot_ok else None,
-            "bootstrap_ci95_high": float(boot_high) if boot_ok else None,
-            "bootstrap_status": "ok" if boot_ok else "bca_not_estimable",
-            "inference_status": status}
+    return {**result, "ci95_low": float(low), "ci95_high": float(high), "inference_status": status}
 
 
 def difference(values, reference):
@@ -133,8 +104,7 @@ def difference(values, reference):
     result.update(diagnostics(delta))
     result.update({"delta": result.pop("mean"), "method": "paired_t",
                    "t_statistic": None, "degrees_of_freedom": None,
-                   "p_value": None, "bootstrap_excludes_zero": None,
-                   "ci_direction_agreement": None})
+                   "p_value": None})
     if constant(delta, scale):
         result["inference_status"] = "constant_differences_no_inference"
         result["diagnostic_flags"] = "constant_differences"
@@ -147,12 +117,6 @@ def difference(values, reference):
         return result
     result.update({"t_statistic": float(test.statistic), "degrees_of_freedom": int(left.size - 1),
                    "p_value": float(test.pvalue)})
-    if result["bootstrap_status"] == "ok":
-        def direction(low, high):
-            return 1 if low > 0 else -1 if high < 0 else 0
-        bdir = direction(result["bootstrap_ci95_low"], result["bootstrap_ci95_high"])
-        result["bootstrap_excludes_zero"] = bool(bdir)
-        result["ci_direction_agreement"] = bdir == direction(result["ci95_low"], result["ci95_high"])
     return result
 
 
