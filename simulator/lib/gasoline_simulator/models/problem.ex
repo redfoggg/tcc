@@ -2,9 +2,9 @@ defmodule GasolineSimulator.Models.Problem do
   alias GasolineSimulator.Data.Regions
   alias GasolineSimulator.Models.Refinery
 
-  @enforce_keys [:month, :demand_m3, :landed_m3, :planning_yield]
+  @enforce_keys [:date, :demand_m3, :landed_m3, :planning_yield]
   defstruct [
-    :month,
+    :date,
     :demand_m3,
     :landed_m3,
     :planning_yield,
@@ -16,7 +16,7 @@ defmodule GasolineSimulator.Models.Problem do
   ]
 
   @type t :: %__MODULE__{
-          month: String.t(),
+          date: String.t(),
           demand_m3: float(),
           landed_m3: float(),
           planning_yield: float(),
@@ -42,7 +42,7 @@ defmodule GasolineSimulator.Models.Problem do
       end)
 
     struct!(__MODULE__, %{
-      month: attrs.month,
+      date: attrs.date,
       demand_m3: attrs.demand_m3,
       landed_m3: attrs.landed_m3,
       planning_yield: attrs.planning_yield,

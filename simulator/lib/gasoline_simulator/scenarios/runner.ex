@@ -302,30 +302,6 @@ defmodule GasolineSimulator.Scenarios.Runner do
          stock_by_region,
          plant_catch_up
        ) do
-    chosen_day(
-      day,
-      landed,
-      landed_by_region,
-      ctx,
-      alive,
-      planning_yield,
-      carried_deficit,
-      stock_by_region,
-      plant_catch_up
-    )
-  end
-
-  defp chosen_day(
-         day,
-         landed,
-         landed_by_region,
-         ctx,
-         alive,
-         planning_yield,
-         carried_deficit,
-         stock_by_region,
-         plant_catch_up
-       ) do
     day_yields = Map.fetch!(ctx.simulated_yields, day)
     demand = Map.fetch!(ctx.year_data.demand_by_day, day).demand_m3
 
@@ -345,7 +321,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
 
     problem =
       Problem.build(%{
-        month: Repository.day_key(day),
+        date: Repository.day_key(day),
         demand_m3: adjusted_demand(ctx.overrides, day, demand),
         landed_m3: landed,
         landed_by_region: landed_by_region,
@@ -431,7 +407,7 @@ defmodule GasolineSimulator.Scenarios.Runner do
 
   defp months_from_days(days) do
     days
-    |> Enum.group_by(&month_label(&1.month))
+    |> Enum.group_by(&month_label(&1.date))
     |> Enum.sort_by(fn {month, _days} -> month end)
     |> Enum.map(fn {month, month_days} ->
       totals = summarize(month_days)

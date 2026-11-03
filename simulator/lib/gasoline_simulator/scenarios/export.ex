@@ -85,7 +85,7 @@ defmodule GasolineSimulator.Scenarios.Export do
 
   defp day_rows(scenario, run, day, yields) do
     by_id = Map.new(day.refineries, &{&1.id, &1})
-    day_yields = yields_for(yields, day.month)
+    day_yields = yields_for(yields, day.date)
 
     Enum.map(Catalog.ids(), fn id ->
       case Map.get(by_id, id) do
@@ -137,7 +137,7 @@ defmodule GasolineSimulator.Scenarios.Export do
     %{
       scenario_id: scenario.id,
       run: run,
-      date: day.month,
+      date: day.date,
       day_demand_m3: day.demand_m3,
       day_production_m3: day.production_m3,
       day_deficit_m3: day.deficit_m3,
@@ -219,8 +219,8 @@ defmodule GasolineSimulator.Scenarios.Export do
     }
   end
 
-  defp failure_note(%{month: month, reason: reason}) do
-    "#{month}: #{reason}"
+  defp failure_note(%{date: date, reason: reason}) do
+    "#{date}: #{reason}"
   end
 
   defp append_manifest(output_dir, row) do

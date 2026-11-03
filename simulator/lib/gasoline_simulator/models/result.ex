@@ -4,7 +4,7 @@ defmodule GasolineSimulator.Models.Result do
 
   defstruct [
     :status,
-    :month,
+    :date,
     :balance_m3,
     :total_fut_pct,
     :total_petroleum_processed_m3,
@@ -25,7 +25,7 @@ defmodule GasolineSimulator.Models.Result do
 
   @type t :: %__MODULE__{
           status: atom() | nil,
-          month: String.t() | nil,
+          date: String.t() | nil,
           balance_m3: float() | nil,
           total_fut_pct: float() | nil,
           total_petroleum_processed_m3: float() | nil,
@@ -56,7 +56,7 @@ defmodule GasolineSimulator.Models.Result do
 
     %__MODULE__{
       status: :ok,
-      month: problem.month,
+      date: problem.date,
       balance_m3: production_m3 - problem.demand_m3,
       total_fut_pct:
         total_fut_pct(
@@ -80,7 +80,7 @@ defmodule GasolineSimulator.Models.Result do
   def from_solver(%Problem{} = problem, {:error, {kind, reason}}) do
     %__MODULE__{
       status: kind,
-      month: problem.month,
+      date: problem.date,
       reason: reason,
       demand_m3: problem.demand_m3,
       landed_m3: problem.landed_m3
